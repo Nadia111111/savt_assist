@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../theme/app_spacing.dart';
+import '../widgets/gradient_scaffold.dart';
 
 class OperatorPanelScreen extends StatefulWidget {
   const OperatorPanelScreen({super.key});
@@ -8,7 +10,7 @@ class OperatorPanelScreen extends StatefulWidget {
 }
 
 class _OperatorPanelScreenState extends State<OperatorPanelScreen> {
-  List<Map<String, String>> _activeChats = [
+  final List<Map<String, String>> _activeChats = [
     {'user': 'Иван Петров', 'lastMsg': 'Проблема с ШУ-24М', 'time': '10:30'},
     {
       'user': 'Ольга Смирнова',
@@ -20,17 +22,10 @@ class _OperatorPanelScreenState extends State<OperatorPanelScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
-      backgroundColor:
-          theme.colorScheme.surface,
-      appBar: AppBar(
-        title: const Text('Панель оператора'),
-        backgroundColor:
-            theme.colorScheme.primary,
-        foregroundColor: Colors.white,
-      ),
+    return GradientScaffold(
+      appBarTitle: 'Панель оператора',
       body: ListView.builder(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.base),
         itemCount: _activeChats.length,
         itemBuilder: (context, index) {
           final chat = _activeChats[index];

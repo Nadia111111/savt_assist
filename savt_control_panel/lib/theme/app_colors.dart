@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 /// Цветовая палитра приложения.
-/// Используйте через Theme.of(context).colorScheme, а не напрямую.
+/// Используйте через Theme.of(context).colorScheme или Theme.of(context).extension<AppColorsExtension>(),
+/// а не напрямую.
 class AppColors {
   // Основной синий
   static const primary = Color(0xFF054582);
@@ -28,4 +29,72 @@ class AppColors {
   static const error = Color(0xFF991B1B);
   static const success = Color(0xFF059669);
   static const warning = Color(0xFFF59E0B);
+}
+
+@immutable
+class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
+  final Color primary;
+  final Color primaryLight;
+  final Color success;
+  final Color warning;
+  final Color error;
+
+  const AppColorsExtension({
+    required this.primary,
+    required this.primaryLight,
+    required this.success,
+    required this.warning,
+    required this.error,
+  });
+
+  static const light = AppColorsExtension(
+    primary: AppColors.primary,
+    primaryLight: AppColors.primaryLight,
+    success: AppColors.success,
+    warning: AppColors.warning,
+    error: AppColors.error,
+  );
+
+  static const dark = AppColorsExtension(
+    primary: AppColors.primaryLight,
+    primaryLight: AppColors.primary,
+    success: AppColors.success,
+    warning: AppColors.warning,
+    error: AppColors.error,
+  );
+
+  @override
+  AppColorsExtension copyWith({
+    Color? primary,
+    Color? primaryLight,
+    Color? success,
+    Color? warning,
+    Color? error,
+  }) {
+    return AppColorsExtension(
+      primary: primary ?? this.primary,
+      primaryLight: primaryLight ?? this.primaryLight,
+      success: success ?? this.success,
+      warning: warning ?? this.warning,
+      error: error ?? this.error,
+    );
+  }
+
+  @override
+  AppColorsExtension lerp(ThemeExtension<AppColorsExtension>? other, double t) {
+    if (other is! AppColorsExtension) {
+      return this;
+    }
+    return AppColorsExtension(
+      primary: Color.lerp(primary, other.primary, t)!,
+      primaryLight: Color.lerp(primaryLight, other.primaryLight, t)!,
+      success: Color.lerp(success, other.success, t)!,
+      warning: Color.lerp(warning, other.warning, t)!,
+      error: Color.lerp(error, other.error, t)!,
+    );
+  }
+
+  static AppColorsExtension of(BuildContext context) {
+    return Theme.of(context).extension<AppColorsExtension>() ?? light;
+  }
 }

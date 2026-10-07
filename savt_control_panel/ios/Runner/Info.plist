@@ -66,5 +66,26 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Для записи голосовых сообщений требуется доступ к микрофону.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Для отправки фотографий в чат требуется доступ к галерее.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Для сохранения фотографий требуется доступ к галерее.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Для создания фото для чата требуется доступ к камере.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>helper.savt.by</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>savt</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

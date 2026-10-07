@@ -45,7 +45,7 @@ class ResponsiveContainer extends StatelessWidget {
   const ResponsiveContainer({
     super.key,
     required this.child,
-    this.maxWidth = 480,
+    this.maxWidth = 600,
     this.padding,
     this.fullHeight = false,
   });

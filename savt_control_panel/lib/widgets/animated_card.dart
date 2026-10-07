@@ -8,6 +8,7 @@ class AnimatedCard extends StatelessWidget {
   final EdgeInsetsGeometry padding;
   final Color? backgroundColor;
   final bool isElevated;
+  final GestureLongPressCallback? onLongPress;
 
   const AnimatedCard({
     super.key,
@@ -18,6 +19,7 @@ class AnimatedCard extends StatelessWidget {
     this.padding = const EdgeInsets.all(14),
     this.backgroundColor,
     this.isElevated = true,
+    this.onLongPress,
   });
 
   @override
@@ -25,6 +27,7 @@ class AnimatedCard extends StatelessWidget {
     final theme = Theme.of(context);
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Container(
         margin: margin,
         padding: padding,
@@ -35,13 +38,13 @@ class AnimatedCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: theme.colorScheme.primary.withOpacity(0.08),
+                    color: theme.colorScheme.primary.withValues(alpha: 0.08),
                     blurRadius: 24,
                     offset: const Offset(0, 8),
                     spreadRadius: -4,
                   ),
                   BoxShadow(
-                    color: theme.colorScheme.primary.withOpacity(0.04),
+                    color: theme.colorScheme.primary.withValues(alpha: 0.04),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -51,18 +54,18 @@ class AnimatedCard extends StatelessWidget {
                 color: backgroundColor ?? theme.colorScheme.surfaceContainerLow,
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(
-                  color: theme.colorScheme.outline.withOpacity(0.5),
+                  color: theme.colorScheme.outline.withValues(alpha: 0.5),
                   width: 1.5,
                 ),
                 boxShadow: [
                   BoxShadow(
                     color: theme.colorScheme.surfaceContainerHighest
-                        .withOpacity(0.5),
+                        .withValues(alpha: 0.5),
                     blurRadius: 12,
                     offset: const Offset(-4, -4),
                   ),
                   BoxShadow(
-                    color: theme.colorScheme.primary.withOpacity(0.08),
+                    color: theme.colorScheme.primary.withValues(alpha: 0.08),
                     blurRadius: 12,
                     offset: const Offset(4, 4),
                   ),

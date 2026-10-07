@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_spacing.dart';
+import 'atoms/app_card.dart';
 
 class ShuCard extends StatelessWidget {
   final String type;
@@ -21,13 +24,13 @@ class ShuCard extends StatelessWidget {
   Color get _warrantyColor {
     switch (warrantyStatus) {
       case 'active':
-        return const Color(0xFF10B981);
+        return AppColors.success;
       case 'expiring':
-        return const Color(0xFFF59E0B);
+        return AppColors.warning;
       case 'expired':
-        return const Color(0xFF991B1B);
+        return AppColors.error;
       default:
-        return const Color(0xFF10B981);
+        return AppColors.success;
     }
   }
 
@@ -50,108 +53,95 @@ class ShuCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return AppCard(
       onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.08),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        type,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF1F2937),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        objectNumber,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF6B7280),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Row(
+      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (unreadMessages > 0)
-                      Stack(
-                        children: [
-                          const Icon(
-                            Icons.chat_bubble_outline,
-                            color: Color(0xFF054582),
-                            size: 20,
-                          ),
-                          Positioned(
-                            right: -2,
-                            top: -2,
-                            child: Container(
-                              width: 8,
-                              height: 8,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF991B1B),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          ),
-                        ],
+                    Text(
+                      type,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF1F2937),
                       ),
-                    const SizedBox(width: 8),
-                    Icon(
-                      Icons.more_vert,
-                      color: Colors.grey.shade400,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      objectNumber,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF6B7280),
+                      ),
                     ),
                   ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: _warrantyColor,
-                    shape: BoxShape.circle,
+              ),
+              Row(
+                children: [
+                  if (unreadMessages > 0)
+                    Stack(
+                      children: [
+                        const Icon(
+                          Icons.chat_bubble_outline,
+                          color: Color(0xFF054582),
+                          size: 20,
+                        ),
+                        Positioned(
+                          right: -2,
+                          top: -2,
+                          child: Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF991B1B),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    Icons.more_vert,
+                    color: Colors.grey.shade400,
                   ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: _warrantyColor,
+                  shape: BoxShape.circle,
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  _warrantyText,
-                  style: TextStyle(
-                    color: _warrantyColor,
-                    fontWeight: FontWeight.w500,
-                    fontSize: 14,
-                  ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _warrantyText,
+                style: TextStyle(
+                  color: _warrantyColor,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 14,
                 ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -103,10 +103,10 @@ class _AnimatedBackgroundState extends State<AnimatedBackground>
                     height: circle.radius * 2,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(circle.opacity),
+                      color: Colors.white.withValues(alpha: circle.opacity),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.white.withOpacity(circle.opacity * 0.5),
+                          color: Colors.white.withValues(alpha: circle.opacity * 0.5),
                           blurRadius: 40,
                           spreadRadius: 10,
                         ),
@@ -124,10 +124,10 @@ class _AnimatedBackgroundState extends State<AnimatedBackground>
                   height: 200,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.white.withOpacity(0.05),
+                    color: Colors.white.withValues(alpha: 0.05),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.white.withOpacity(0.1),
+                        color: Colors.white.withValues(alpha: 0.1),
                         blurRadius: 100,
                         spreadRadius: 40,
                       ),

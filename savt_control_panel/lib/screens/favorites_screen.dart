@@ -1,11 +1,12 @@
 // lib/screens/favorites_screen.dart
 import 'package:flutter/material.dart';
+import '../theme/app_spacing.dart';
 import '../widgets/gradient_scaffold.dart';
+import '../widgets/responsive_layout.dart';
+import '../widgets/skeletons.dart';
 import '../widgets/bottom_nav_bar.dart';
 import '../widgets/animated_card.dart';
-import '../widgets/responsive_layout.dart';
-import '../services/favorites_service.dart';
-import '../services/knowledge_data.dart';
+import '../main.dart'; // favoritesService
 
 class FavoritesScreen extends StatefulWidget {
   const FavoritesScreen({super.key});
@@ -16,86 +17,94 @@ class FavoritesScreen extends StatefulWidget {
 
 class _FavoritesScreenState extends State<FavoritesScreen>
     with SingleTickerProviderStateMixin {
-  int _currentIndex = 3;
   late TabController _tabController;
   String _searchQuery = '';
   bool _isSearchExpanded = false;
   final FocusNode _searchFocusNode = FocusNode();
 
-  // Слушаем изменения в сервисе избранного
-  void _onFavoritesChanged() {
-    setState(() {});
-  }
+  List<Map<String, dynamic>> _favoriteArticles = [];
+  List<Map<String, dynamic>> _favoriteFaqs = [];
+  bool _loadingArticles = false;
+  bool _loadingFaqs = false;
+  bool _showingArticleDetail = false;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _loadFavorites();
+  }
 
-    // Слушаем изменения избранного
-    FavoritesService().addListener(_onFavoritesChanged);
+  Future<void> _loadFavorites() async {
+    await _loadFavoriteArticles();
+    await _loadFavoriteFaqs();
+  }
 
-    // Инициализируем сервис избранного
-    FavoritesService().initialize();
+  Future<void> _onRefresh() async {
+    await _loadFavorites();
+  }
+
+  Future<void> _loadFavoriteArticles() async {
+    setState(() => _loadingArticles = true);
+    try {
+      final ids = favoritesService.favoriteArticleIds.toList();
+      final List<Map<String, dynamic>> articles = [];
+      for (final id in ids) {
+        try {
+          final article = await knowledgeService.getKbArticleDetail(id);
+          articles.add(article);
+        } catch (_) {}
+      }
+      setState(() {
+        _favoriteArticles = articles;
+        _loadingArticles = false;
+      });
+    } catch (e) {
+      setState(() => _loadingArticles = false);
+    }
+  }
+
+  Future<void> _loadFavoriteFaqs() async {
+    setState(() => _loadingFaqs = true);
+    try {
+      final ids = favoritesService.favoriteFaqIds.toList();
+      final data = await knowledgeService.getFaqEntries(page: 1, size: 100);
+      final allFaqs = List<Map<String, dynamic>>.from(data['items']);
+      final filtered = allFaqs.where((faq) => ids.contains(faq['id'])).toList();
+      setState(() {
+        _favoriteFaqs = filtered;
+        _loadingFaqs = false;
+      });
+    } catch (e) {
+      setState(() => _loadingFaqs = false);
+    }
+  }
+
+  List<Map<String, dynamic>> get _filteredArticles {
+    if (_searchQuery.isEmpty) return _favoriteArticles;
+    return _favoriteArticles
+        .where((a) =>
+            a['title'].toLowerCase().contains(_searchQuery.toLowerCase()) ||
+            (a['description'] ?? '')
+                .toLowerCase()
+                .contains(_searchQuery.toLowerCase()))
+        .toList();
+  }
+
+  List<Map<String, dynamic>> get _filteredFaqs {
+    if (_searchQuery.isEmpty) return _favoriteFaqs;
+    return _favoriteFaqs
+        .where((f) =>
+            f['question'].toLowerCase().contains(_searchQuery.toLowerCase()) ||
+            f['answer'].toLowerCase().contains(_searchQuery.toLowerCase()))
+        .toList();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     _searchFocusNode.dispose();
-    FavoritesService().removeListener(_onFavoritesChanged);
     super.dispose();
-  }
-
-  List<ArticleModel> get _filteredArticles {
-    // Получаем только избранные статьи
-    final favoriteIds = FavoritesService().favoriteArticleIds;
-    var result =
-        allArticles.where((article) => favoriteIds.contains(article.id));
-
-    if (_searchQuery.isNotEmpty) {
-      result = result.where((article) {
-        return article.title
-                .toLowerCase()
-                .contains(_searchQuery.toLowerCase()) ||
-            article.description
-                .toLowerCase()
-                .contains(_searchQuery.toLowerCase());
-      });
-    }
-
-    return result.toList();
-  }
-
-  List<FAQModel> get _filteredFaqs {
-    // Получаем только избранные FAQ
-    final favoriteIds = FavoritesService().favoriteFaqIds;
-    var result = allFaqs.where((faq) => favoriteIds.contains(faq.id));
-
-    if (_searchQuery.isNotEmpty) {
-      result = result.where((faq) {
-        return faq.question
-                .toLowerCase()
-                .contains(_searchQuery.toLowerCase()) ||
-            faq.answer.toLowerCase().contains(_searchQuery.toLowerCase());
-      });
-    }
-
-    return result.toList();
-  }
-
-  void _toggleArticleFavorite(String id) {
-    FavoritesService().toggleArticleFavorite(id);
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-  void _toggleFaqFavorite(String id) {
-    FavoritesService().toggleFaqFavorite(id);
-    if (mounted) {
-      setState(() {});
-    }
   }
 
   @override
@@ -107,49 +116,54 @@ class _FavoritesScreenState extends State<FavoritesScreen>
         onPressed: () => Navigator.pop(context),
       ),
       appBarAction: IconButton(
-        icon: Icon(
-          _isSearchExpanded ? Icons.close : Icons.search,
-          color: Colors.white,
-        ),
+        icon: Icon(_isSearchExpanded ? Icons.close : Icons.search,
+            color: Colors.white),
         onPressed: () {
           setState(() {
             _isSearchExpanded = !_isSearchExpanded;
-            if (!_isSearchExpanded) {
-              _searchQuery = '';
-            }
+            if (!_isSearchExpanded) _searchQuery = '';
           });
           if (_isSearchExpanded) {
             Future.delayed(const Duration(milliseconds: 100), () {
-              FocusScope.of(context).requestFocus(_searchFocusNode);
+              if (mounted) {
+                FocusScope.of(this.context).requestFocus(_searchFocusNode);
+              }
             });
           } else {
             FocusScope.of(context).unfocus();
           }
         },
       ),
-      body: Column(
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-            padding:
-                _isSearchExpanded ? const EdgeInsets.all(16) : EdgeInsets.zero,
-            child: _isSearchExpanded
-                ? _buildSearchField()
-                : const SizedBox.shrink(),
-          ),
-          const SizedBox(height: 8),
-          _buildTabBar(),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [_buildArticlesTab(), _buildFaqTab()],
+      body: ResponsiveContainer(
+        maxWidth: 600,
+        child: Column(
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeInOutCubic,
+              padding:
+                  _isSearchExpanded ? const EdgeInsets.all(AppSpacing.base) : EdgeInsets.zero,
+              child: _isSearchExpanded
+                  ? _buildSearchField()
+                  : const SizedBox.shrink(),
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            _buildTabBar(),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: _onRefresh,
+                color: const Color(0xFF0a7ac2),
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [_buildArticlesTab(), _buildFaqTab()],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
       bottomNavBar: BottomNavBar(
-        currentIndex: _currentIndex,
+        currentIndex: 3,
         onTap: _onNavTapped,
       ),
     );
@@ -172,11 +186,10 @@ class _FavoritesScreenState extends State<FavoritesScreen>
           filled: true,
           fillColor: theme.colorScheme.surfaceContainerHighest,
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide.none,
-          ),
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none),
           contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              const EdgeInsets.symmetric(horizontal: AppSpacing.base, vertical: AppSpacing.md),
         ),
       ),
     );
@@ -185,7 +198,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
   Widget _buildTabBar() {
     final theme = Theme.of(context);
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+      margin: const EdgeInsets.fromLTRB(AppSpacing.base, 0, AppSpacing.base, 0),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(16),
@@ -206,40 +219,20 @@ class _FavoritesScreenState extends State<FavoritesScreen>
   }
 
   Widget _buildArticlesTab() {
+    if (_loadingArticles) {
+      return const SkeletonList();
+    }
     if (_filteredArticles.isEmpty) return _buildEmptyState('Статьи');
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final screenWidth = constraints.maxWidth;
-        final isDesktop = screenWidth >= 600;
-
-        if (isDesktop) {
-          // Десктоп: сетка в 2 колонки
-          return GridView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 2.5,
-            ),
-            itemCount: _filteredArticles.length,
-            itemBuilder: (context, index) =>
-                _buildArticleCardGrid(_filteredArticles[index], index),
-          );
-        }
-
-        // Мобильные: обычный список
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: _filteredArticles.length,
-          itemBuilder: (context, index) =>
-              _buildArticleCard(_filteredArticles[index], index),
-        );
-      },
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _filteredArticles.length,
+      itemBuilder: (context, index) =>
+          _buildArticleCard(_filteredArticles[index], index),
     );
   }
 
   Widget _buildFaqTab() {
+    if (_loadingFaqs) return const SkeletonList();
     if (_filteredFaqs.isEmpty) return _buildEmptyState('Вопросы');
     return ListView.builder(
       padding: const EdgeInsets.all(16),
@@ -249,9 +242,9 @@ class _FavoritesScreenState extends State<FavoritesScreen>
     );
   }
 
-  Widget _buildArticleCard(ArticleModel article, int index) {
+  Widget _buildArticleCard(Map<String, dynamic> article, int index) {
     final theme = Theme.of(context);
-    final isFavorite = FavoritesService().isArticleFavorite(article.id);
+    final isFavorite = favoritesService.isArticleFavorite(article['id']);
     return AnimatedCard(
       index: index,
       onTap: () => _showArticleDetail(article),
@@ -260,11 +253,10 @@ class _FavoritesScreenState extends State<FavoritesScreen>
           Container(
             width: 44,
             height: 44,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF054582), Color(0xFF0a7ac2)],
-              ),
-              borderRadius: BorderRadius.circular(12),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                  colors: [Color(0xFF054582), Color(0xFF0a7ac2)]),
+              borderRadius: BorderRadius.all(Radius.circular(12)),
             ),
             child: const Icon(Icons.menu_book, color: Colors.white, size: 22),
           ),
@@ -273,107 +265,43 @@ class _FavoritesScreenState extends State<FavoritesScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  article.title,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                Text(article['title'],
+                    style: theme.textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
-                Text(
-                  article.description,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                Text(article['description'] ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    textAlign: TextAlign.start,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
               ],
             ),
           ),
           IconButton(
-            icon: Icon(
-              isFavorite ? Icons.star : Icons.star_border,
-              color: isFavorite
-                  ? const Color(0xFFF59E0B)
-                  : theme.colorScheme.onSurfaceVariant,
-              size: 22,
-            ),
-            onPressed: () => _toggleArticleFavorite(article.id),
+            icon: Icon(isFavorite ? Icons.star : Icons.star_border,
+                color: isFavorite
+                    ? const Color(0xFFF59E0B)
+                    : theme.colorScheme.onSurfaceVariant),
+            onPressed: () {
+              favoritesService.toggleArticleFavorite(article['id']);
+              setState(() {
+                if (isFavorite) {
+                  _favoriteArticles
+                      .removeWhere((a) => a['id'] == article['id']);
+                }
+              });
+            },
           ),
         ],
       ),
     );
   }
 
-  Widget _buildArticleCardGrid(ArticleModel article, int index) {
+  Widget _buildFaqCard(Map<String, dynamic> faq, int index) {
     final theme = Theme.of(context);
-    final isFavorite = FavoritesService().isArticleFavorite(article.id);
-    return AnimatedCard(
-      index: index,
-      onTap: () => _showArticleDetail(article),
-      margin: EdgeInsets.zero,
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF054582), Color(0xFF0a7ac2)],
-                  ),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child:
-                    const Icon(Icons.menu_book, color: Colors.white, size: 20),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  article.title,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              IconButton(
-                icon: Icon(
-                  isFavorite ? Icons.star : Icons.star_border,
-                  color: isFavorite
-                      ? const Color(0xFFF59E0B)
-                      : theme.colorScheme.onSurfaceVariant,
-                  size: 18,
-                ),
-                onPressed: () => _toggleArticleFavorite(article.id),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            article.description,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFaqCard(FAQModel faq, int index) {
-    final theme = Theme.of(context);
-    final isFavorite = FavoritesService().isFaqFavorite(faq.id);
+    final isFavorite = favoritesService.isFaqFavorite(faq['id']);
     return AnimatedCard(
       index: index,
       child: Theme(
@@ -382,51 +310,47 @@ class _FavoritesScreenState extends State<FavoritesScreen>
           title: Row(
             children: [
               Expanded(
-                child: Text(
-                  faq.question,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+                  child: Text(faq['question'],
+                      style: theme.textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w600))),
               IconButton(
-                icon: Icon(
-                  isFavorite ? Icons.star : Icons.star_border,
-                  color: isFavorite
-                      ? const Color(0xFFF59E0B)
-                      : theme.colorScheme.onSurfaceVariant,
-                  size: 20,
-                ),
-                onPressed: () => _toggleFaqFavorite(faq.id),
+                icon: Icon(isFavorite ? Icons.star : Icons.star_border,
+                    color: isFavorite
+                        ? const Color(0xFFF59E0B)
+                        : theme.colorScheme.onSurfaceVariant),
+                onPressed: () {
+                  favoritesService.toggleFaqFavorite(faq['id']);
+                  setState(() {
+                    if (isFavorite) {
+                      _favoriteFaqs.removeWhere((f) => f['id'] == faq['id']);
+                    }
+                  });
+                },
               ),
             ],
           ),
           children: [
             Padding(
               padding: const EdgeInsets.only(bottom: 16, left: 16, right: 16),
-              child: Text(
-                faq.answer,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant, height: 1.5),
-              ),
+              child: Text(faq['answer'],
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant, height: 1.5),
+                  textAlign: TextAlign.start),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    Navigator.pushNamed(context, '/chat/general');
-                  },
+                  onPressed: () =>
+                      Navigator.pushNamed(context, '/chat/support'),
                   icon: const Icon(Icons.chat, size: 16),
                   label: const Text('Перейти в чат'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: theme.colorScheme.primary,
                     side: BorderSide(color: theme.colorScheme.primary),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                        borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
               ),
@@ -445,91 +369,87 @@ class _FavoritesScreenState extends State<FavoritesScreen>
         children: [
           Icon(Icons.star_outline, size: 64, color: theme.colorScheme.outline),
           const SizedBox(height: 16),
-          Text(
-            'Нет сохранённых $type',
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
+          Text('Нет сохранённых $type',
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
         ],
       ),
     );
   }
 
-  void _showArticleDetail(ArticleModel article) {
+  Future<void> _showArticleDetail(Map<String, dynamic> article) async {
+    if (_showingArticleDetail) return;
+    _showingArticleDetail = true;
     final theme = Theme.of(context);
-    final isFavorite = FavoritesService().isArticleFavorite(article.id);
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Container(
-          height: MediaQuery.of(context).size.height * 0.7,
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-          ),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 4,
-                      margin: const EdgeInsets.only(right: 16),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.outline,
-                        borderRadius: BorderRadius.circular(2),
+    final isFavorite = favoritesService.isArticleFavorite(article['id']);
+    try {
+      await showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setModalState) => Container(
+            height: MediaQuery.of(context).size.height * 0.7,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+            ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                          width: 40,
+                          height: 4,
+                          margin: const EdgeInsets.only(right: 16),
+                          decoration: BoxDecoration(
+                              color: theme.colorScheme.outline,
+                              borderRadius: BorderRadius.circular(2)),
                       ),
-                    ),
-                    IconButton(
-                      icon: Icon(
-                        isFavorite ? Icons.star : Icons.star_border,
-                        color: isFavorite
-                            ? const Color(0xFFF59E0B)
-                            : theme.colorScheme.onSurfaceVariant,
-                        size: 24,
+                      IconButton(
+                        icon: Icon(isFavorite ? Icons.star : Icons.star_border,
+                            color: isFavorite
+                                ? const Color(0xFFF59E0B)
+                                : theme.colorScheme.onSurfaceVariant),
+                        onPressed: () {
+                          favoritesService.toggleArticleFavorite(article['id']);
+                          setModalState(() {});
+                        },
                       ),
-                      onPressed: () {
-                        _toggleArticleFavorite(article.id);
-                        setModalState(() {});
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  article.title,
-                  style: theme.textTheme.headlineSmall
-                      ?.copyWith(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  article.description,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant, height: 1.6),
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      Navigator.pushNamed(context, '/chat/general');
-                    },
-                    icon: const Icon(Icons.chat),
-                    label: const Text('Перейти в чат'),
+                    ],
                   ),
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  Text(article['title'],
+                      style: theme.textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+Text(article['description'] ?? '',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            height: 1.6),
+                        textAlign: TextAlign.start),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () =>
+                          Navigator.pushNamed(context, '/chat/support'),
+                      icon: const Icon(Icons.chat),
+                      label: const Text('Перейти в чат'),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
+    } finally {
+      _showingArticleDetail = false;
+    }
   }
 
   void _onNavTapped(int index) {
@@ -548,3 +468,4 @@ class _FavoritesScreenState extends State<FavoritesScreen>
     }
   }
 }
+

@@ -1,5 +1,10 @@
 # Project-level configuration.
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.23)
+
+# Ensure the required CMake version is available.
+if(${CMAKE_VERSION} VERSION_LESS "3.23")
+  message(FATAL_ERROR "CMake version 3.23 or higher is required. Detected version: ${CMAKE_VERSION}")
+endif()
 project(savt_control_panel LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change

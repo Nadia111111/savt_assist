@@ -70,13 +70,13 @@ class _GlowButtonState extends State<GlowButton>
             ),
             boxShadow: [
               BoxShadow(
-                color: colors[0].withOpacity(0.4),
+                color: colors[0].withValues(alpha: 0.4),
                 blurRadius: 20,
                 offset: const Offset(0, 8),
                 spreadRadius: -4,
               ),
               BoxShadow(
-                color: colors[0].withOpacity(0.2),
+                color: colors[0].withValues(alpha: 0.2),
                 blurRadius: 40,
                 offset: const Offset(0, 12),
                 spreadRadius: -8,

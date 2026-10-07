@@ -1,15 +1,23 @@
 // lib/screens/shu_detail_screen.dart
+import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import '../models/shu_model.dart';
-import '../services/network_service.dart';
-import '../services/offline_service.dart';
+import 'package:intl/intl.dart';
+import 'package:open_file/open_file.dart';
+import '../models/telemetry.dart';
+import '../services/file_save_helper.dart';
+import '../utils/download_helper.dart';
 import '../widgets/gradient_scaffold.dart';
 import '../widgets/animated_card.dart';
+import '../widgets/skeletons.dart';
+import '../widgets/responsive_layout.dart';
+import 'navigation_container.dart';
+import '../main.dart';
 
 class ShuDetailScreen extends StatefulWidget {
   final String shuId;
-
-  const ShuDetailScreen({super.key, required this.shuId});
+  final int initialTab;
+  const ShuDetailScreen({super.key, required this.shuId, this.initialTab = 0});
 
   @override
   State<ShuDetailScreen> createState() => _ShuDetailScreenState();
@@ -18,149 +26,501 @@ class ShuDetailScreen extends StatefulWidget {
 class _ShuDetailScreenState extends State<ShuDetailScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  late TextEditingController _customNameController;
-  late TextEditingController _commentController;
 
-  ShuModel? _shu;
+  Map<String, dynamic>? _cabinetDetail;
+  List<Map<String, dynamic>> _documents = [];
+  final Set<String> _downloadedFileNames = {};
+  bool _isLoading = true;
+  bool _loadingDocs = false;
+  bool _downloadingDoc = false;
 
-  // Кэш для загруженных документов (мок-хранилище по docId)
-  final Set<String> _downloadedDocIds = {};
-
-  final Map<String, ShuModel> _mockShuData = {
-    '1': ShuModel(
-      id: '1',
-      type: 'ШУ-24М',
-      objectNumber: 'ОБ-2024-001',
-      customName: '',
-      comment: '',
-      stationType: 'Насосная станция',
-      purpose: 'Водоснабжение',
-      warrantyStatus: 'active',
-      warrantyDaysRemaining: 245,
-      warrantyStart: '15.01.2024',
-      warrantyEnd: '15.01.2027',
-      moderationStatus: 'active',
-      unreadMessages: 2,
-      addedDate: DateTime(2024, 1, 15),
-    ),
-    '2': ShuModel(
-      id: '2',
-      type: 'ШУ-18К',
-      objectNumber: 'ОБ-2024-002',
-      customName: '',
-      comment: '',
-      stationType: 'Вентиляционная установка',
-      purpose: 'Вентиляция',
-      warrantyStatus: 'expiring',
-      warrantyDaysRemaining: 28,
-      warrantyStart: '20.02.2024',
-      warrantyEnd: '20.02.2025',
-      moderationStatus: 'active',
-      unreadMessages: 0,
-      addedDate: DateTime(2024, 2, 20),
-    ),
-    '3': ShuModel(
-      id: '3',
-      type: 'ШУ-36П',
-      objectNumber: 'ОБ-2023-045',
-      customName: '',
-      comment: '',
-      stationType: 'Насосная станция',
-      purpose: 'Канализация',
-      warrantyStatus: 'expired',
-      warrantyDaysRemaining: -30,
-      warrantyStart: '05.12.2023',
-      warrantyEnd: '05.12.2024',
-      moderationStatus: 'active',
-      unreadMessages: 1,
-      addedDate: DateTime(2023, 12, 5),
-    ),
-  };
-
-  List<Map<String, dynamic>> _documents = [
-    {
-      'id': '1',
-      'name': 'Руководство по эксплуатации',
-      'icon': '📘',
-      'size': '5.8 МБ',
-      'downloaded': false,
-      'requiresPermission': false,
-      'permissionRequested': false,
-      'permissionGranted': false,
-      'loading': false,
-    },
-    {
-      'id': '2',
-      'name': 'Схема электрическая принципиальная',
-      'icon': '⚡',
-      'size': '3.1 МБ',
-      'downloaded': false,
-      'requiresPermission': true,
-      'permissionRequested': false,
-      'permissionGranted': false,
-      'loading': false,
-    },
-    {
-      'id': '3',
-      'name': 'Карта регистров',
-      'icon': '🏷️',
-      'size': '0.8 МБ',
-      'downloaded': false,
-      'requiresPermission': true,
-      'permissionRequested': false,
-      'permissionGranted': false,
-      'loading': false,
-    },
-  ];
-
-  final List<String> _photos =
-      List.generate(8, (i) => 'https://picsum.photos/seed/shu${i + 1}/400/400');
+  List<TelemetryAlarm> _telemetryAlarms = [];
+  bool _loadingTelemetry = false;
+  bool _hasTelemetryAccess = true;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _shu = _mockShuData[widget.shuId];
-    _customNameController = TextEditingController(text: _shu?.customName ?? '');
-    _commentController = TextEditingController(text: _shu?.comment ?? '');
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    _customNameController.dispose();
-    _commentController.dispose();
-    super.dispose();
-  }
-
-  void _saveLocalChanges() {
-    if (_shu == null) return;
-    setState(() {
-      _shu!.customName = _customNameController.text;
-      _shu!.comment = _commentController.text;
+    _tabController =
+        TabController(length: 3, vsync: this, initialIndex: widget.initialTab);
+    _loadDetail();
+    _loadTelemetry();
+    userEventsService.onTelemetryCreated = _onTelemetryCreated;
+    userEventsService.startTelemetry(int.parse(widget.shuId));
+    _tabController.addListener(() {
+      if (_tabController.index == 2 && !_tabController.indexIsChanging) {
+        if (_telemetryAlarms.isEmpty &&
+            !_loadingTelemetry &&
+            _hasTelemetryAccess) {
+          _loadTelemetry();
+        }
+      }
     });
+  }
+
+  Future<void> _loadDetail() async {
+    setState(() => _isLoading = true);
+    try {
+      final detail =
+          await cabinetService.getCabinetDetail(int.parse(widget.shuId));
+      if (mounted) {
+        setState(() {
+          _cabinetDetail = detail;
+          _isLoading = false;
+        });
+        _loadDocuments();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        final errStr = e.toString().toLowerCase();
+        if (errStr.contains('403') ||
+            errStr.contains('404') ||
+            errStr.contains('не найден') ||
+            errStr.contains('недоступен')) {
+          _showError('Проект или шкаф больше недоступен');
+          Navigator.pop(context, true);
+          return;
+        }
+        _showError('Ошибка загрузки: $e');
+      }
+    }
+  }
+
+  Future<void> _loadDocuments() async {
+    setState(() => _loadingDocs = true);
+    try {
+      final docs = await cabinetService.getDocuments(int.parse(widget.shuId));
+      debugPrint('🟢 [DEBUG DOCUMENTS] Loaded cabinet documents: $docs');
+      if (mounted) {
+        setState(() {
+          _documents = docs;
+          _loadingDocs = false;
+        });
+        _checkDownloadedFiles();
+      }
+    } catch (e) {
+      debugPrint('🔴 [DEBUG DOCUMENTS ERROR] Error: $e');
+      if (mounted) {
+        setState(() => _loadingDocs = false);
+        final errStr = e.toString().toLowerCase();
+        if (errStr.contains('403') ||
+            errStr.contains('404') ||
+            errStr.contains('не найден') ||
+            errStr.contains('недоступен')) {
+          _showError('Проект больше недоступен');
+        } else {
+          _showError('Ошибка загрузки документов: $e');
+        }
+      }
+    }
+  }
+
+  Future<void> _checkDownloadedFiles() async {
+    final downloaded = <String>{};
+    for (final doc in _documents) {
+      final fileUrl = doc['file_url'] ?? doc['url'];
+      final fileName = FileSaveHelper.ensureExtension(doc['title'] ?? 'document', fileUrl);
+      if (await FileSaveHelper.isFileDownloaded(fileName)) {
+        downloaded.add(fileName);
+      }
+    }
+    if (mounted) {
+      setState(() {
+        _downloadedFileNames.addAll(downloaded);
+      });
+    }
+  }
+
+  Future<void> _openDownloadedDocument(String fileName) async {
+    final localPath = await FileSaveHelper.getLocalFilePath(fileName);
+    if (localPath != null) {
+      final result = await OpenFile.open(localPath);
+      if (result.type != ResultType.done && mounted) {
+        _showError('Не удалось открыть файл: ${result.message}');
+      }
+    } else {
+      _showError('Файл не найден на устройстве');
+    }
+  }
+
+  Future<void> _loadTelemetry() async {
+    if (!_hasTelemetryAccess) return;
+    setState(() => _loadingTelemetry = true);
+    try {
+      final response = await cabinetService.getTelemetry(
+        int.parse(widget.shuId),
+      );
+      setState(() {
+        _telemetryAlarms = response.registers;
+        _loadingTelemetry = false;
+        _hasTelemetryAccess = true;
+      });
+    } on DioException catch (e) {
+      setState(() => _loadingTelemetry = false);
+      if (e.response?.statusCode == 403) {
+        setState(() => _hasTelemetryAccess = false);
+      } else {
+        _showError('Ошибка загрузки телеметрии: $e');
+      }
+    } catch (e) {
+      setState(() => _loadingTelemetry = false);
+      _showError('Ошибка загрузки телеметрии: $e');
+    }
+  }
+
+  void _onTelemetryCreated(int cabinetId) {
+    if (cabinetId == int.parse(widget.shuId)) {
+      _loadTelemetry();
+    }
+  }
+
+  Future<void> _downloadDocument(Map<String, dynamic> doc) async {
+    final docId = doc['id'];
+    final fileUrl = doc['file_url'] ?? doc['url'];
+    final fileName =
+        FileSaveHelper.ensureExtension(doc['title'] ?? 'document', fileUrl);
+
+    // Проверяем, есть ли доступ
+    if (doc['has_access'] == false) {
+      _showError(
+          'Нет доступа к документу. Запросите разрешение у администратора.');
+      return;
+    }
+
+    // Если файл уже скачан, открываем без повторного скачивания
+    if (await FileSaveHelper.isFileDownloaded(fileName)) {
+      if (mounted) {
+        setState(() {
+          _downloadedFileNames.add(fileName);
+        });
+      }
+      await _openDownloadedDocument(fileName);
+      return;
+    }
+
+    if (!mounted) return;
+    if (_downloadingDoc) return;
+    setState(() => _downloadingDoc = true);
+
+    final progressController = StreamController<double>.broadcast();
+
+    // Показываем диалог прогресса
+    showDownloadProgressDialog(context, fileName, progressController.stream);
+
+    try {
+      // Скачиваем файл с отслеживанием прогресса
+      final bytes = await cabinetService.downloadDocumentWithProgress(
+        docId,
+        onProgress: (sent, total) {
+          if (total > 0) {
+            progressController.add(sent / total);
+          }
+        },
+      );
+
+      if (!mounted) return;
+      Navigator.pop(context); // Закрываем диалог прогресса
+
+      // Сохраняем на устройство
+      final savePath = await FileSaveHelper.saveFile(
+        context: context,
+        bytes: bytes,
+        fileName: fileName,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _downloadingDoc = false;
+        _downloadedFileNames.add(fileName);
+      });
+
+      // Открываем файл
+      if (savePath != 'Галерея') {
+        final result = await OpenFile.open(savePath);
+        if (result.type != ResultType.done && mounted) {
+          _showError('Не удалось открыть файл: ${result.message}');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        try {
+          Navigator.pop(context);
+        } catch (_) {}
+      }
+      setState(() => _downloadingDoc = false);
+      _showError('Ошибка загрузки: $e');
+    } finally {
+      progressController.close();
+    }
+  }
+
+  Future<void> _requestDocumentAccess(Map<String, dynamic> doc) async {
+    final commentController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final comment = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Запрос доступа'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                    'Пожалуйста, укажите причину запроса доступа к документу:',
+                    textAlign: TextAlign.start,
+                  ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: commentController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    hintText: 'Причина запроса (минимум 5 символов)...',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().length < 5) {
+                      return 'Введите не менее 5 символов';
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Отмена'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (formKey.currentState!.validate()) {
+                  Navigator.pop(ctx, commentController.text.trim());
+                }
+              },
+              child: const Text('Отправить'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (comment == null || comment.isEmpty) return;
+
+    try {
+      final docId = doc['id'];
+      await cabinetService.requestDocumentAccess(docId, userMessage: comment);
+      _showSuccess('Запрос на доступ отправлен администратору');
+
+      // Обновляем статус документа локально
+      setState(() {
+        final index = _documents.indexWhere((d) => d['id'] == docId);
+        if (index != -1) {
+          _documents[index]['access_requested'] = true;
+        }
+      });
+    } catch (e) {
+      _showError('Ошибка: $e');
+    }
+  }
+
+
+  void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Изменения сохранены локально'),
-        behavior: SnackBarBehavior.floating,
-      ),
+      SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating),
     );
   }
 
+  void _showSuccess(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating),
+    );
+  }
+
+  Future<void> _togglePinCabinet() async {
+    if (_cabinetDetail == null) return;
+    final isPinned = _cabinetDetail!['is_pinned'] == true ||
+        _cabinetDetail!['isPinned'] == true;
+    final newPinned = !isPinned;
+    final cabId = int.parse(widget.shuId);
+
+    setState(() {
+      _cabinetDetail!['is_pinned'] = newPinned;
+    });
+
+    try {
+      if (newPinned) {
+        await cabinetService.pinCabinet(cabId);
+      } else {
+        await cabinetService.unpinCabinet(cabId);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(newPinned ? 'Шкаф закреплен' : 'Шкаф откреплен'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _cabinetDetail!['is_pinned'] = isPinned;
+        });
+        _showError('Ошибка изменения закрепления: $e');
+      }
+    }
+  }
+
+  Future<void> _openCabinetChat() async {
+    try {
+      final chatData = await cabinetService
+          .getCabinetChat(_cabinetDetail!['cabinet_id'] ?? int.parse(widget.shuId));
+      final chatId = chatData['id'];
+      if (!mounted) return;
+      if (chatId != null) {
+        Navigator.pushNamed(context, '/chat/$chatId');
+        MainNavigationContainer.globalKey.currentState
+            ?.refreshChatsList();
+      }
+    } on DioException catch (e) {
+      if (!mounted) return;
+      if (e.response?.statusCode == 403 ||
+          (e.response?.statusCode == 404 &&
+              _cabinetDetail?['project_id'] != null)) {
+        _showError('Проект больше недоступен');
+      } else {
+        _showError('Ошибка открытия чата: $e');
+      }
+    }
+  }
+
+  Future<void> _confirmDeleteCabinet() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Убрать шкаф?'),
+        content: const Text(
+          'Вы уверены, что хотите убрать этот шкаф? Чаты по этому ШУ уйдут в архив.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Убрать'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final cabId = int.parse(widget.shuId);
+      await cabinetService.deleteCabinet(cabId);
+      if (mounted) {
+        MainNavigationContainer.globalKey.currentState?.refreshChatsList();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Шкаф убран'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showError('Не удалось убрать шкаф: $e');
+      }
+    }
+  }
+
+  Future<void> _confirmLeaveProject() async {
+    final projectName = _cabinetDetail?['project_name'] ?? 'этого проекта';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Выйти из проекта?'),
+        content: Text(
+          'Вы потеряете доступ ко всем шкафам проекта "$projectName". Чаты по проекту уйдут в архив.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Выйти'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final pId = _cabinetDetail?['project_id'];
+      if (pId != null) {
+        final parsedPid = pId is int ? pId : int.parse(pId.toString());
+        await cabinetService.leaveProject(parsedPid);
+      }
+      if (mounted) {
+        MainNavigationContainer.globalKey.currentState?.refreshChatsList();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Вы вышли из проекта'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showError('Не удалось выйти из проекта: $e');
+      }
+    }
+  }
+
   String get _warrantyText {
-    if (_shu == null) return '';
-    final days = _shu!.warrantyDaysRemaining;
-    if (days > 0) return 'Осталось $days дней';
-    if (days < 0) return 'Истекла ${days.abs()} дн. назад';
+    final status = _cabinetDetail?['warranty_status'];
+    if (status == 'active') return 'Активна';
+    if (status == 'expiring_soon') return 'Истекает';
+    if (status == 'expired') return 'Истекла';
     return 'Н/Д';
   }
 
   Color get _warrantyColor {
-    if (_shu == null) return Colors.grey;
-    switch (_shu!.warrantyStatus) {
+    final status = _cabinetDetail?['warranty_status'];
+    switch (status) {
       case 'active':
         return const Color(0xFF10B981);
-      case 'expiring':
+      case 'expiring_soon':
         return const Color(0xFFF59E0B);
       case 'expired':
         return const Color(0xFF991B1B);
@@ -169,337 +529,171 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
     }
   }
 
-  void _downloadDocument(int index) async {
-    final isOnline = NetworkService.isOnline;
-    if (!isOnline) {
-      // Добавляем в очередь загрузок
-      OfflineService().addDownloadToQueue(
-        _documents[index]['id'],
-        _documents[index]['name'],
-        widget.shuId,
-      );
-      _showSnack('Нет сети. Документ будет загружен при подключении.');
-      return;
-    }
-
-    setState(() => _documents[index]['loading'] = true);
-    await Future.delayed(const Duration(seconds: 2));
-    setState(() {
-      _documents[index]['loading'] = false;
-      _documents[index]['downloaded'] = true;
-      _downloadedDocIds.add(_documents[index]['id']);
-      // Сохраняем в кэш
-      OfflineService().cacheData(
-        'doc_${_documents[index]['id']}',
-        _documents[index],
-      );
-    });
-    _showSnack('Документ загружен');
-  }
-
-  void _openDocument(int index) {
-    // Проверяем, был ли документ загружен ранее
-    final docId = _documents[index]['id'] as String;
-    if (!_downloadedDocIds.contains(docId) &&
-        !OfflineService().hasCachedData('doc_$docId')) {
-      // Если не загружен, предлагаем загрузить
-      _showSnack('Сначала загрузите документ');
-      return;
-    }
-
-    final theme = Theme.of(context);
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        height: MediaQuery.of(context).size.height * 0.6,
-        decoration: BoxDecoration(
-          color: theme.brightness == Brightness.dark
-              ? const Color(0xFF0B1120)
-              : Colors.white,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text(_documents[index]['icon'] as String,
-                      style: const TextStyle(fontSize: 32)),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      _documents[index]['name'] as String,
-                      style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.onSurface),
-                    ),
-                  ),
-                ],
-              ),
-              Divider(height: 24, color: theme.colorScheme.outline),
-              Text(
-                'Содержимое документа (демо-режим)\n\n'
-                'Здесь будет встроенный просмотрщик или открытие в стороннем приложении.',
-                style: TextStyle(
-                    height: 1.5,
-                    color: theme.brightness == Brightness.dark
-                        ? const Color(0xFF94A3B8)
-                        : const Color(0xFF64748B)),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _requestPermission(int index) {
-    setState(() => _documents[index]['permissionRequested'] = true);
-    _showSnack('Запрос отправлен администратору');
-    Future.delayed(const Duration(seconds: 3), () {
-      if (!mounted) return;
-      setState(() {
-        _documents[index]['permissionGranted'] = true;
-        _documents[index]['permissionRequested'] = false;
-      });
-      _showSnack('Доступ разрешён! Теперь документ можно загрузить');
-    });
-  }
-
-  void _showSnack(String text) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(text),
-        backgroundColor: const Color(0xFF054582),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
+  @override
+  void dispose() {
+    _tabController.dispose();
+    userEventsService.stopTelemetry();
+    userEventsService.onTelemetryCreated = null;
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (_shu == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Ошибка')),
-        body: const Center(child: Text('ШУ не найдено')),
+    if (_isLoading) {
+      return const GradientScaffold(
+        appBarTitle: 'Шкаф управления',
+        body: SkeletonDetail(),
+      );
+    }
+    if (_cabinetDetail == null) {
+      return const GradientScaffold(
+        appBarTitle: 'Ошибка',
+        body: Center(child: Text('Не удалось загрузить данные')),
       );
     }
 
-    final shu = _shu!;
-    final moderation = shu.moderationStatus;
-
-    return ValueListenableBuilder<bool>(
-      valueListenable: NetworkService.isOnlineNotifier,
-      builder: (context, isOnline, child) {
-        return GradientScaffold(
-          appBarTitle: shu.customName.isNotEmpty ? shu.customName : shu.type,
-          appBarLeading: IconButton(
-            onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
+    return GradientScaffold(
+      appBarTitle: _cabinetDetail!['custom_name']?.isNotEmpty == true
+          ? _cabinetDetail!['custom_name']
+          : _cabinetDetail!['type'],
+      appBarLeading: IconButton(
+        onPressed: () => Navigator.pop(context),
+        icon: const Icon(Icons.arrow_back, color: Colors.white),
+      ),
+      appBarAction: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: Icon(
+              (_cabinetDetail?['is_pinned'] == true ||
+                      _cabinetDetail?['isPinned'] == true)
+                  ? Icons.push_pin
+                  : Icons.push_pin_outlined,
+              color: Colors.white,
+            ),
+            tooltip: (_cabinetDetail?['is_pinned'] == true ||
+                    _cabinetDetail?['isPinned'] == true)
+                ? 'Открепить'
+                : 'Закрепить',
+            onPressed: _togglePinCabinet,
           ),
-          body: Column(
-            children: [
-              if (moderation == 'active')
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: GestureDetector(
-                    onTap: () =>
-                        Navigator.pushNamed(context, '/chat/${widget.shuId}'),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: theme.colorScheme.primary.withOpacity(0.2)),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.primary,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.chat,
-                                color: Colors.white, size: 16),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Чат техподдержки',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        color: theme.colorScheme.primary,
-                                        fontSize: 13)),
-                                Text(
-                                    shu.unreadMessages > 0
-                                        ? '${shu.unreadMessages} новых сообщений'
-                                        : 'Нажмите, чтобы написать',
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        color: theme
-                                            .colorScheme.onSurfaceVariant)),
-                              ],
-                            ),
-                          ),
-                          Icon(Icons.chevron_right,
-                              color: theme.colorScheme.primary, size: 18),
-                        ],
-                      ),
-                    ),
+          IconButton(
+            icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
+            tooltip: 'Открыть чат',
+            onPressed: _openCabinetChat,
+          ),
+          if (_cabinetDetail?['project_id'] == null ||
+              _cabinetDetail?['project_id'] == 0)
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.white),
+              tooltip: 'Убрать шкаф',
+              onPressed: _confirmDeleteCabinet,
+            ),
+        ],
+      ),
+      body: ResponsiveContainer(
+        maxWidth: 600,
+        child: Column(
+          children: [
+            const SizedBox(height: 16),
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(32),
+                    topRight: Radius.circular(32),
                   ),
                 ),
-              if (moderation != 'active')
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: moderation == 'moderation'
-                          ? const Color(0xFF3D2F1F)
-                          : const Color(0xFF3D1F1F),
-                      borderRadius: BorderRadius.circular(16),
+                child: Column(
+                  children: [
+                    TabBar(
+                      controller: _tabController,
+                      labelColor: theme.colorScheme.primary,
+                      unselectedLabelColor: theme.colorScheme.onSurfaceVariant,
+                      indicatorColor: theme.colorScheme.primary,
+                      indicatorWeight: 3,
+                      labelStyle: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 13),
+                      dividerColor: Colors.transparent,
+                      tabs: const [
+                        Tab(text: 'Инфо'),
+                        Tab(text: 'Документы'),
+                        Tab(text: 'Телеметрия'),
+                      ],
                     ),
-                    child: Text(
-                      moderation == 'moderation'
-                          ? 'Заявка на модерации. Ожидайте подтверждения.'
-                          : 'Заявка отклонена. Вы можете отправить повторно.',
-                      style: TextStyle(
-                        color: moderation == 'moderation'
-                            ? const Color(0xFFF59E0B)
-                            : const Color(0xFF991B1B),
-                      ),
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surface,
-                    borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(32),
-                        topRight: Radius.circular(32)),
-                  ),
-                  child: Column(
-                    children: [
-                      TabBar(
+                    Expanded(
+                      child: TabBarView(
                         controller: _tabController,
-                        labelColor: theme.colorScheme.primary,
-                        unselectedLabelColor:
-                            theme.colorScheme.onSurfaceVariant,
-                        indicatorColor: theme.colorScheme.primary,
-                        indicatorWeight: 3,
-                        labelStyle: const TextStyle(
-                            fontWeight: FontWeight.w600, fontSize: 13),
-                        dividerColor: Colors.transparent,
-                        tabs: const [
-                          Tab(text: 'Инфо'),
-                          Tab(text: 'Документы'),
-                          Tab(text: 'Фото'),
+                        children: [
+                          _buildInfoTab(),
+                          _buildDocumentsTab(),
+                          _buildTelemetryTab(),
                         ],
                       ),
-                      Expanded(
-                        child: TabBarView(
-                          controller: _tabController,
-                          children: [
-                            _buildInfoTab(moderation, isOnline),
-                            _buildDocumentsTab(isOnline),
-                            _buildPhotosTab(),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-          bottomNavBar: null,
-        );
-      },
+            ),
+          ],
+        ),
+      ),
+      bottomNavBar: null,
     );
   }
 
-  Widget _buildInfoTab(String moderation, bool isOnline) {
-    final theme = Theme.of(context);
-    return SingleChildScrollView(
+  Widget _buildWarrantyExpiringBanner(ThemeData theme) {
+    return Container(
       padding: const EdgeInsets.all(16),
-      child: Column(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.orange.shade600, Colors.red.shade500],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.red.withValues(alpha: 0.15),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
         children: [
-          _buildInfoCard(),
-          const SizedBox(height: 16),
-          if (moderation == 'active') _buildServiceButton(isOnline),
-          const SizedBox(height: 16),
-          AnimatedCard(
-            index: 1,
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: const BoxDecoration(
+              color: Colors.white24,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.warning_amber_rounded,
+                color: Colors.white, size: 24),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Произвольное название',
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _customNameController,
-                  decoration: InputDecoration(
-                    hintText: 'Введите название...',
-                    filled: true,
-                    fillColor: theme.colorScheme.surfaceContainerLow,
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide.none),
-                    focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide(
-                            color: theme.colorScheme.primary, width: 2)),
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
+                const Text(
+                  'Срок гарантии истекает!',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
                   ),
                 ),
-                const SizedBox(height: 16),
-                Text('Комментарий',
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _commentController,
-                  maxLines: 4,
-                  decoration: InputDecoration(
-                    hintText: 'Введите комментарий...',
-                    filled: true,
-                    fillColor: theme.colorScheme.surfaceContainerLow,
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide.none),
-                    focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide(
-                            color: theme.colorScheme.primary, width: 2)),
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
+                const SizedBox(height: 2),
+                Text(
+                  'Рекомендуем провести плановое ТО. Оформить заявку можно в разделе «Заявки».',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.9),
+                    fontSize: 11,
                   ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _saveLocalChanges,
-                    child: const Text('Сохранить изменения'),
-                  ),
+                  textAlign: TextAlign.start,
                 ),
               ],
             ),
@@ -509,51 +703,105 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
     );
   }
 
+  Widget _buildInfoTab() {
+    final theme = Theme.of(context);
+    final isExpiring = _cabinetDetail?['warranty_status'] == 'expiring_soon';
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          if (isExpiring) ...[
+            _buildWarrantyExpiringBanner(theme),
+            const SizedBox(height: 16),
+          ],
+          _buildInfoCard(),
+        ],
+      ),
+    );
+  }
+
   Widget _buildInfoCard() {
     final theme = Theme.of(context);
-    final shu = _shu!;
     return AnimatedCard(
       index: 0,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildInfoRow('Тип станции', shu.stationType ?? 'Н/Д'),
+          _buildInfoRow('Тип станции', _cabinetDetail?['type'] ?? 'Н/Д'),
           const SizedBox(height: 16),
-          _buildInfoRow('Предназначение', shu.purpose ?? 'Н/Д'),
+          _buildInfoRow('Предназначение', _cabinetDetail?['purpose'] ?? 'Н/Д'),
+          const SizedBox(height: 16),
+          _buildInfoRow(
+              'Проект', _cabinetDetail?['project_name'] ?? 'Без проекта'),
           Divider(height: 32, color: theme.colorScheme.outline),
-          if (shu.warrantyStart != null && shu.warrantyStart!.isNotEmpty) ...[
-            _buildInfoRow('Дата начала гарантии', shu.warrantyStart!),
-            const SizedBox(height: 16),
-            _buildInfoRow('Дата окончания гарантии', shu.warrantyEnd!),
+          _buildInfoRow('Дата начала гарантии',
+              _formatDate(_cabinetDetail?['warranty_starts_at'])),
+          const SizedBox(height: 16),
+          _buildInfoRow('Дата окончания гарантии',
+              _formatDate(_cabinetDetail?['warranty_ends_at'])),
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 18),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  _warrantyColor.withValues(alpha: 0.15),
+                  _warrantyColor.withValues(alpha: 0.05)
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _warrantyColor.withValues(alpha: 0.2)),
+            ),
+            child: Center(
+                child: Text(_warrantyText,
+                    style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: _warrantyColor))),
+          ),
+          if (_cabinetDetail?['project_id'] == null ||
+              _cabinetDetail?['project_id'] == 0) ...[
             const SizedBox(height: 20),
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 18),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    _warrantyColor.withOpacity(0.15),
-                    _warrantyColor.withOpacity(0.05),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                label: const Text('Убрать шкаф',
+                    style: TextStyle(
+                        color: Colors.red, fontWeight: FontWeight.w600)),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Colors.red),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: _warrantyColor.withOpacity(0.2)),
-              ),
-              child: Center(
-                  child: Text(_warrantyText,
-                      style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: _warrantyColor))),
-            ),
-          ] else
-            Center(
-              child: Text(
-                'Информация о гарантии отсутствует',
-                style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                onPressed: _confirmDeleteCabinet,
               ),
             ),
+          ] else ...[
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.exit_to_app, color: Colors.red),
+                label: const Text('Выйти из проекта',
+                    style: TextStyle(
+                        color: Colors.red, fontWeight: FontWeight.w600)),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Colors.red),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: _confirmLeaveProject,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -577,175 +825,260 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
     );
   }
 
-  Widget _buildServiceButton(bool isOnline) {
-    final shu = _shu!;
-    final isWarranty = shu.warrantyStatus == 'active';
-    return SizedBox(
-      width: double.infinity,
-      height: 44,
-      child: ElevatedButton(
-        onPressed: isOnline
-            ? () =>
-                Navigator.pushNamed(context, '/service-request/${widget.shuId}')
-            : null,
-        style: ElevatedButton.styleFrom(
-          backgroundColor:
-              isWarranty ? const Color(0xFF059669) : const Color(0xFF054582),
-          foregroundColor: Colors.white,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          elevation: 0,
+  // ========== Документы ==========
+  Widget _buildDocumentsTab() {
+    if (_loadingDocs) {
+      return const SkeletonList();
+    }
+    if (_documents.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.folder_open,
+                size: 64, color: Theme.of(context).colorScheme.outline),
+            const SizedBox(height: 16),
+            Text('Нет документов',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          ],
         ),
-        child: Text(
-          isWarranty
-              ? 'Гарантийное обслуживание'
-              : 'Негарантийное обслуживание',
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _documents.length,
+      itemBuilder: (context, index) {
+        final doc = _documents[index];
+        final hasAccess = doc['has_access'] ?? false;
+        final accessRequested = doc['access_requested'] ?? false;
+        final docType = doc['doc_type'] ?? 'document';
+
+        IconData icon;
+        switch (docType) {
+          case 'passport':
+            icon = Icons.description;
+          case 'manual':
+            icon = Icons.menu_book;
+          case 'wiring_diagram':
+            icon = Icons.timeline;
+          case 'electrical_schema':
+            icon = Icons.electric_bolt;
+          case 'registers_map':
+            icon = Icons.map;
+          default:
+            icon = Icons.insert_drive_file;
+        }
+
+        final fileUrl = doc['file_url'] ?? doc['url'];
+        final fileName =
+            FileSaveHelper.ensureExtension(doc['title'] ?? 'document', fileUrl);
+        final isDownloaded = _downloadedFileNames.contains(fileName);
+
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: ListTile(
+            onTap: hasAccess
+                ? () => isDownloaded
+                    ? _openDownloadedDocument(fileName)
+                    : _downloadDocument(doc)
+                : null,
+            leading: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: Theme.of(context).colorScheme.primary),
+            ),
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text(doc['title'] ?? 'Документ',
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                ),
+                if (!hasAccess) ...[
+                  const SizedBox(width: 8),
+                  const Icon(Icons.lock, size: 16, color: Colors.orange),
+                ],
+              ],
+            ),
+            subtitle: Text(doc['file_size_bytes'] != null
+                ? '${(doc['file_size_bytes'] / 1024).round()} KB'
+                : ''),
+            trailing: _downloadingDoc
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : hasAccess
+                    ? (isDownloaded
+                        ? OutlinedButton.icon(
+                            icon: const Icon(Icons.visibility, size: 16),
+                            label: const Text('Просмотр'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Theme.of(context).colorScheme.primary,
+                              side: BorderSide(
+                                  color: Theme.of(context).colorScheme.primary),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 8),
+                            ),
+                            onPressed: () => _openDownloadedDocument(fileName),
+                          )
+                        : ElevatedButton(
+                            onPressed: () => _downloadDocument(doc),
+                            child: const Text('Скачать'),
+                          ))
+                    : accessRequested
+                        ? const OutlinedButton(
+                            onPressed: null,
+                            child: Text('Запрос отправлен'),
+                          )
+                        : OutlinedButton(
+                            onPressed: () => _requestDocumentAccess(doc),
+                            child: const Text('Запросить доступ'),
+                          ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTelemetryTab() {
+    if (!_hasTelemetryAccess) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.lock,
+                size: 64, color: Theme.of(context).colorScheme.outline),
+            const SizedBox(height: 16),
+            Text('Нет доступа к телеметрии',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          ],
         ),
+      );
+    }
+
+    if (_loadingTelemetry && _telemetryAlarms.isEmpty) {
+      return const SkeletonList();
+    }
+
+    if (_telemetryAlarms.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.sensors_off,
+                size: 64, color: Theme.of(context).colorScheme.outline),
+            const SizedBox(height: 16),
+            Text('Активных аварий нет',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => _loadTelemetry(),
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: _telemetryAlarms.length,
+        itemBuilder: (context, index) {
+          final alarm = _telemetryAlarms[index];
+          return _TelemetryAlarmCard(alarm: alarm);
+        },
       ),
     );
   }
 
-  Widget _buildDocumentsTab(bool isOnline) {
+  String _formatDate(String? dateStr) {
+    if (dateStr == null || dateStr == '—' || dateStr.trim().isEmpty) return '—';
+    try {
+      final parsed = DateTime.parse(dateStr);
+      return DateFormat('dd.MM.yyyy').format(parsed);
+    } catch (_) {
+      return dateStr;
+    }
+  }
+}
+
+class _TelemetryAlarmCard extends StatelessWidget {
+  final TelemetryAlarm alarm;
+
+  const _TelemetryAlarmCard({required this.alarm});
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      itemCount: _documents.length,
-      itemBuilder: (context, index) {
-        final doc = _documents[index];
-        final bool loading = doc['loading'] as bool;
-        final bool downloaded = doc['downloaded'] as bool;
-        final bool requiresPerm = doc['requiresPermission'] as bool;
-        final bool requested = doc['permissionRequested'] as bool;
-        final bool granted = doc['permissionGranted'] as bool;
-        final docId = doc['id'] as String;
+    final timeStr = DateFormat('dd.MM.yyyy HH:mm').format(alarm.updatedAt);
 
-        // Проверяем, был ли документ ранее загружен (из кэша)
-        final bool wasDownloaded = _downloadedDocIds.contains(docId) ||
-            OfflineService().hasCachedData('doc_$docId');
-
-        return AnimatedCard(
-          index: index,
-          child: Row(
-            children: [
-              Text(doc['icon'] as String, style: const TextStyle(fontSize: 32)),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(doc['name'] as String,
-                        style: theme.textTheme.bodyMedium
-                            ?.copyWith(fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 4),
-                    Text(doc['size'] as String,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant)),
-                    if (requiresPerm && !granted && !requested)
-                      const SizedBox(height: 6),
-                    if (requiresPerm && !granted && !requested)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF59E0B).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                              color: const Color(0xFFF59E0B).withOpacity(0.2)),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.lock_outline,
-                                size: 10, color: Color(0xFFF59E0B)),
-                            SizedBox(width: 4),
-                            Text('Требуется разрешение',
-                                style: TextStyle(
-                                    fontSize: 10, color: Color(0xFFF59E0B))),
-                          ],
-                        ),
-                      )
-                    else if (requested)
-                      const Text('Ожидает одобрения...',
-                          style: TextStyle(fontSize: 12, color: Colors.blue)),
-                    if (!isOnline)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 4),
-                        child: Text('Офлайн',
-                            style:
-                                TextStyle(fontSize: 10, color: Colors.orange)),
-                      ),
-                  ],
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.errorContainer,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.warning_amber_rounded,
+                  size: 22, color: theme.colorScheme.error),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    alarm.name,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Регистр ${alarm.address}, бит ${alarm.bit}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    timeStr,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.errorContainer,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${alarm.value}',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: theme.colorScheme.error,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-              if (loading)
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else if (downloaded || wasDownloaded)
-                ElevatedButton(
-                  onPressed: () => _openDocument(index),
-                  child: const Text('Открыть', style: TextStyle(fontSize: 13)),
-                )
-              else if (requiresPerm && !granted && !requested)
-                OutlinedButton(
-                  onPressed: isOnline ? () => _requestPermission(index) : null,
-                  child:
-                      const Text('Запросить', style: TextStyle(fontSize: 13)),
-                )
-              else if (requiresPerm &&
-                  granted &&
-                  !(downloaded || wasDownloaded))
-                OutlinedButton(
-                  onPressed: isOnline ? () => _downloadDocument(index) : null,
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.download_outlined, size: 14),
-                    const SizedBox(width: 4),
-                    const Text('Загрузить', style: TextStyle(fontSize: 13))
-                  ]),
-                )
-              else if (!requiresPerm && !(downloaded || wasDownloaded))
-                OutlinedButton(
-                  onPressed: isOnline ? () => _downloadDocument(index) : null,
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.download_outlined, size: 14),
-                    const SizedBox(width: 4),
-                    const Text('Загрузить', style: TextStyle(fontSize: 13))
-                  ]),
-                )
-              else
-                const SizedBox(width: 80),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildPhotosTab() {
-    final theme = Theme.of(context);
-    return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-          childAspectRatio: 1),
-      itemCount: _photos.length,
-      itemBuilder: (context, index) {
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Image.network(
-            _photos[index],
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(
-                color: theme.colorScheme.surfaceContainerHighest,
-                child: Icon(Icons.image_outlined,
-                    size: 32, color: theme.colorScheme.onSurfaceVariant)),
-          ),
-        );
-      },
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
+

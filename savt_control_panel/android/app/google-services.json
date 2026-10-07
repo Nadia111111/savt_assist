@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "940700673331",
+    "project_id": "savtassist",
+    "storage_bucket": "savtassist.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:940700673331:android:bf15440d32c58e62ba8a46",
+        "android_client_info": {
+          "package_name": "com.savt.savt_control_panel"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDF7EVLOGHpwUcrG1ss2za0WNJlmT5AkZM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

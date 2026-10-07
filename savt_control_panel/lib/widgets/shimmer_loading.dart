@@ -89,37 +89,37 @@ class ShimmerCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: const Color(0xFFE3EEFF)),
       ),
-      child: Column(
+      child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const ShimmerLoading(width: 40, height: 40, borderRadius: 12),
-              const SizedBox(width: 12),
+              ShimmerLoading(width: 40, height: 40, borderRadius: 12),
+              SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const ShimmerLoading(
+                    ShimmerLoading(
                         width: 120, height: 16, borderRadius: 6),
-                    const SizedBox(height: 8),
-                    const ShimmerLoading(
+                    SizedBox(height: 8),
+                    ShimmerLoading(
                         width: 80, height: 12, borderRadius: 6),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          const ShimmerLoading(height: 14, borderRadius: 6),
-          const SizedBox(height: 8),
-          const ShimmerLoading(width: 200, height: 14, borderRadius: 6),
-          const SizedBox(height: 12),
+          SizedBox(height: 16),
+          ShimmerLoading(height: 14, borderRadius: 6),
+          SizedBox(height: 8),
+          ShimmerLoading(width: 200, height: 14, borderRadius: 6),
+          SizedBox(height: 12),
           Row(
             children: [
-              const ShimmerLoading(width: 60, height: 24, borderRadius: 12),
-              const SizedBox(width: 8),
-              const ShimmerLoading(width: 60, height: 24, borderRadius: 12),
+              ShimmerLoading(width: 60, height: 24, borderRadius: 12),
+              SizedBox(width: 8),
+              ShimmerLoading(width: 60, height: 24, borderRadius: 12),
             ],
           ),
         ],
