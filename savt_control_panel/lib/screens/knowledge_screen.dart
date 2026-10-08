@@ -1,5 +1,6 @@
 // lib/screens/knowledge_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'dart:async';
 import 'package:flutter/rendering.dart';
 import 'package:open_file/open_file.dart';
@@ -75,6 +76,7 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
 
   final ScrollController _scrollController = ScrollController();
   final ScrollController _faqScrollController = ScrollController();
+  final ScrollController _faqChipsScrollController = ScrollController();
   bool _articlesError = false;
   bool _faqError = false;
 
@@ -184,6 +186,7 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
     favoritesService.removeListener(_onFavoritesChanged);
     _scrollController.dispose();
     _faqScrollController.dispose();
+    _faqChipsScrollController.dispose();
     _tabController.dispose();
     _searchFocusNode.dispose();
     _searchDebounce?.cancel();
@@ -761,45 +764,63 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
   Widget _buildFaqCategoryChips() {
     final theme = Theme.of(context);
     if (_faqCategories.isEmpty) return const SizedBox.shrink();
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.base, vertical: AppSpacing.sm),
-      child: Row(
-        children: [
-          ChoiceChip(
-            label: const Text('Все'),
-            selected: _selectedFaqCategoryId == null,
-            onSelected: (_) => setState(() {
-              _selectedFaqCategoryId = null;
-              _loadFaq(refresh: true);
-            }),
-            selectedColor: theme.colorScheme.primary,
-            backgroundColor: theme.colorScheme.surfaceContainerHighest,
-            labelStyle: TextStyle(
-                color: _selectedFaqCategoryId == null
-                    ? theme.colorScheme.onPrimary
-                    : theme.colorScheme.onSurfaceVariant),
-          ),
-          const SizedBox(width: 8),
-          ..._faqCategories.map((cat) => Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  label: Text(cat['name']),
-                  selected: _selectedFaqCategoryId == cat['id'],
-                  onSelected: (_) => setState(() {
-                    _selectedFaqCategoryId = cat['id'];
-                    _loadFaq(refresh: true);
-                  }),
-                  selectedColor: theme.colorScheme.primary,
-                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                  labelStyle: TextStyle(
-                    color: _selectedFaqCategoryId == cat['id']
-                        ? theme.colorScheme.onPrimary
-                        : theme.colorScheme.onSurfaceVariant,
+    return Listener(
+      onPointerSignal: (pointerSignal) {
+        if (pointerSignal is PointerScrollEvent &&
+            _faqChipsScrollController.hasClients) {
+          final targetOffset = (_faqChipsScrollController.offset +
+                  pointerSignal.scrollDelta.dy +
+                  pointerSignal.scrollDelta.dx)
+              .clamp(
+                0.0,
+                _faqChipsScrollController.position.maxScrollExtent,
+              );
+          _faqChipsScrollController.jumpTo(targetOffset);
+        }
+      },
+      child: SingleChildScrollView(
+        controller: _faqChipsScrollController,
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.base, vertical: AppSpacing.sm),
+        child: Row(
+          children: [
+            ChoiceChip(
+              label: const Text('Все'),
+              selected: _selectedFaqCategoryId == null,
+              onSelected: (_) => setState(() {
+                _selectedFaqCategoryId = null;
+                _loadFaq(refresh: true);
+              }),
+              selectedColor: theme.colorScheme.primary,
+              backgroundColor: theme.colorScheme.surfaceContainerHighest,
+              labelStyle: TextStyle(
+                  color: _selectedFaqCategoryId == null
+                      ? theme.colorScheme.onPrimary
+                      : theme.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(width: 8),
+            ..._faqCategories.map((cat) => Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(cat['name']),
+                    selected: _selectedFaqCategoryId == cat['id'],
+                    onSelected: (_) => setState(() {
+                      _selectedFaqCategoryId = cat['id'];
+                      _loadFaq(refresh: true);
+                    }),
+                    selectedColor: theme.colorScheme.primary,
+                    backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                    labelStyle: TextStyle(
+                      color: _selectedFaqCategoryId == cat['id']
+                          ? theme.colorScheme.onPrimary
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
-              )),
-        ],
+                )),
+          ],
+        ),
       ),
     );
   }

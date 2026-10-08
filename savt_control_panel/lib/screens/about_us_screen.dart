@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_spacing.dart';
 import '../widgets/gradient_scaffold.dart';
+import '../widgets/responsive_layout.dart';
 
 class AboutUsScreen extends StatefulWidget {
   const AboutUsScreen({super.key, this.isTab = false});
@@ -21,13 +23,14 @@ class AboutUsScreenState extends State<AboutUsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
-      body: GradientScaffold(
-        appBarTitle: 'О нас',
-        showBackButton: false,
-        body: SafeArea(
+    return GradientScaffold(
+      appBarTitle: 'О нас',
+      showBackButton: false,
+      body: ResponsiveContainer(
+        maxWidth: 600,
+        child: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppSpacing.lg),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.base, vertical: AppSpacing.lg),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -108,7 +111,12 @@ class AboutUsScreenState extends State<AboutUsScreen> {
                   icon: Icons.language_rounded,
                   title: 'Сайт',
                   subtitle: 'savt.by',
-                  onTap: () {},
+                  onTap: () async {
+                    final uri = Uri.parse('https://savt.by');
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  },
                 ),
                  const SizedBox(height: AppSpacing.sm),
                  _buildContactTile(
@@ -116,7 +124,12 @@ class AboutUsScreenState extends State<AboutUsScreen> {
                   icon: Icons.email_rounded,
                   title: 'Email',
                   subtitle: 'info@savt.by',
-                  onTap: () {},
+                  onTap: () async {
+                    final uri = Uri.parse('mailto:info@savt.by');
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri);
+                    }
+                  },
                 ),
                  const SizedBox(height: AppSpacing.sm),
                  _buildContactTile(
@@ -124,7 +137,12 @@ class AboutUsScreenState extends State<AboutUsScreen> {
                   icon: Icons.phone_rounded,
                   title: 'Телефон',
                   subtitle: '+375 (29) 000-00-00',
-                  onTap: () {},
+                  onTap: () async {
+                    final uri = Uri.parse('tel:+375290000000');
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri);
+                    }
+                  },
                 ),
                  const SizedBox(height: AppSpacing.xl),
                  Center(

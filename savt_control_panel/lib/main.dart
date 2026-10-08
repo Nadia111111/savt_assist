@@ -201,6 +201,19 @@ void main() async {
   runApp(const ControlPanelApp());
 }
 
+class AppScrollBehavior extends MaterialScrollBehavior {
+  const AppScrollBehavior();
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.trackpad,
+        PointerDeviceKind.stylus,
+        PointerDeviceKind.unknown,
+      };
+}
+
 PageRouteBuilder<T> _buildRoute<T>(Widget page) {
   return PageRouteBuilder<T>(
     pageBuilder: (_, __, ___) => page,
@@ -698,6 +711,7 @@ class _ControlPanelAppState extends State<ControlPanelApp> {
           navigatorKey: ControlPanelApp.navigatorKey,
           title: 'SAVT Assist',
           debugShowCheckedModeBanner: false,
+          scrollBehavior: const AppScrollBehavior(),
           themeMode: themeMode,
           initialRoute: '/',
           onGenerateInitialRoutes: (initialRouteName) {

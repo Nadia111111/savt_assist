@@ -1,9 +1,12 @@
 // lib/screens/qr_scanner_screen.dart
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../widgets/gradient_scaffold.dart';
+import '../widgets/responsive_layout.dart';
 import '../main.dart';
 
 enum ScannerTarget { project, cabinet }
@@ -47,6 +50,17 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
   }
 
   Future<void> _checkPermission() async {
+    // В вебе permission_handler не поддерживается и всегда возвращает denied.
+    // Браузер сам запрашивает доступ к камере через getUserMedia при запуске стрима.
+    if (kIsWeb) {
+      if (mounted) {
+        setState(() {
+          _hasCameraPermission = true;
+        });
+      }
+      return;
+    }
+
     final status = await Permission.camera.status;
     if (status.isGranted) {
       if (mounted) {
@@ -277,6 +291,26 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     }
   }
 
+  Future<void> _pickImageAndScan() async {
+    try {
+      final picker = ImagePicker();
+      final image = await picker.pickImage(source: ImageSource.gallery);
+      if (image == null) return;
+
+      setState(() => _isProcessing = true);
+      final found = await scannerController.analyzeImage(image.path);
+      if (!found) {
+        _showError('QR-код на выбранном изображении не найден');
+      }
+    } catch (e) {
+      _showError('Не удалось обработать изображение: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessing = false);
+      }
+    }
+  }
+
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: Colors.red),
@@ -303,7 +337,14 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
 
     return GradientScaffold(
       appBarTitle: isProject ? 'Добавить проект' : 'Добавить шкаф (ШУ)',
-      body: Column(
+      appBarAction: IconButton(
+        icon: const Icon(Icons.photo_library_outlined, color: Colors.white),
+        tooltip: 'Выбрать фото из галереи',
+        onPressed: _isProcessing ? null : _pickImageAndScan,
+      ),
+      body: ResponsiveContainer(
+        maxWidth: 600,
+        child: Column(
         children: [
           // Переключатель режимов: Проект / ШУ
           Container(
@@ -386,6 +427,43 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
                   MobileScanner(
                     controller: scannerController,
                     onDetect: _onQRDetected,
+                    errorBuilder: (context, error, child) {
+                      return Container(
+                        color: Colors.black87,
+                        padding: const EdgeInsets.all(24),
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.videocam_off_outlined,
+                                  color: Colors.orangeAccent, size: 56),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Камера недоступна',
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                kIsWeb
+                                    ? 'Браузер заблокировал доступ к камере или соединение не по HTTPS. Разрешите камеру в настройках браузера или выберите фото с QR-кодом.'
+                                    : 'Не удалось запустить камеру: ${error.errorCode.name}',
+                                style: const TextStyle(color: Colors.white70),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 18),
+                              ElevatedButton.icon(
+                                onPressed: _pickImageAndScan,
+                                icon: const Icon(Icons.photo_library),
+                                label: const Text('Загрузить фото из галереи'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   )
                 else
                   Container(
@@ -413,11 +491,12 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 20),
-                            ElevatedButton.icon(
-                              onPressed: openAppSettings,
-                              icon: const Icon(Icons.settings),
-                              label: const Text('Открыть настройки'),
-                            ),
+                            if (!kIsWeb)
+                              ElevatedButton.icon(
+                                onPressed: openAppSettings,
+                                icon: const Icon(Icons.settings),
+                                label: const Text('Открыть настройки'),
+                              ),
                           ],
                         ),
                       ),
@@ -530,6 +609,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
             ),
           ),
         ],
+      ),
       ),
     );
   }
