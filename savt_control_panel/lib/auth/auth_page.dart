@@ -853,25 +853,31 @@ void _showSuccessSnackBar(String message) {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF054582),
       body: LayoutBuilder(
         builder: (context, constraints) {
           final screenWidth = constraints.maxWidth;
+          final screenHeight = constraints.maxHeight;
           final isDesktop = screenWidth >= 900;
-          return Stack(
-            children: [
-              const Positioned.fill(
-                child: AnimatedBackground(
-                  gradientColors: [
-                    Color(0xFF054582),
-                    Color(0xFF0a7ac2),
-                    Color(0xFF0d3a5c)
-                  ],
+          return SizedBox(
+            width: screenWidth,
+            height: screenHeight,
+            child: Stack(
+              children: [
+                const Positioned.fill(
+                  child: AnimatedBackground(
+                    gradientColors: [
+                      Color(0xFF054582),
+                      Color(0xFF0a7ac2),
+                      Color(0xFF0d3a5c)
+                    ],
+                  ),
                 ),
-              ),
-              SafeArea(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  child: Padding(
+                SafeArea(
+                  child: SizedBox.expand(
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Padding(
                     padding:
                         EdgeInsets.symmetric(horizontal: isDesktop ? 24 : 20),
                     child: Center(
@@ -880,25 +886,31 @@ void _showSuccessSnackBar(String message) {
                         child: Column(
                           children: [
                             const SizedBox(height: 40),
-                            Image.network(
-                              'https://savt.by/wp-content/uploads/2025/10/logo-small.png',
+                            Image.asset(
+                              'assets/images/logo-small.png',
                               width: 200,
                               height: 100,
                               fit: BoxFit.contain,
-                              errorBuilder: (_, __, ___) => Container(
+                              errorBuilder: (_, __, ___) => Image.network(
+                                'https://savt.by/wp-content/uploads/2025/10/logo-small.png',
                                 width: 200,
                                 height: 100,
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                      colors: [Colors.white70, Colors.white38]),
-                                  borderRadius: BorderRadius.circular(16),
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) => Container(
+                                  width: 200,
+                                  height: 100,
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                        colors: [Colors.white70, Colors.white38]),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: const Center(
+                                      child: Text('SAVT',
+                                          style: TextStyle(
+                                              fontSize: 32,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white))),
                                 ),
-                                child: const Center(
-                                    child: Text('SAVT',
-                                        style: TextStyle(
-                                            fontSize: 32,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white))),
                               ),
                             )
                                 .animate()
@@ -1002,11 +1014,13 @@ void _showSuccessSnackBar(String message) {
                   ),
                 ),
               ),
-            ],
-          );
-        },
-      ),
-    );
+            ),
+          ],
+        ),
+      );
+    },
+  ),
+);
   }
 
   Widget _buildModeButton(String text, bool isLogin) {

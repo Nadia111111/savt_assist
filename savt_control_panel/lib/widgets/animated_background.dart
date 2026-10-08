@@ -79,66 +79,90 @@ class _AnimatedBackgroundState extends State<AnimatedBackground>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        _updateCircles();
-        return Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: widget.gradientColors,
-              stops: const [0.0, 0.4, 1.0],
-            ),
-          ),
-          child: Stack(
-            children: [
-              ..._circles.map((circle) {
-                return Positioned(
-                  left: circle.x,
-                  top: circle.y,
-                  child: Container(
-                    width: circle.radius * 2,
-                    height: circle.radius * 2,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withValues(alpha: circle.opacity),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.white.withValues(alpha: circle.opacity * 0.5),
-                          blurRadius: 40,
-                          spreadRadius: 10,
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }),
-              // Дополнительный большой blur-слой для глубины
-              Positioned(
-                top: -50,
-                right: -50,
-                child: Container(
-                  width: 200,
-                  height: 200,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withValues(alpha: 0.05),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.white.withValues(alpha: 0.1),
-                        blurRadius: 100,
-                        spreadRadius: 40,
-                      ),
-                    ],
-                  ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth.isFinite ? constraints.maxWidth : MediaQuery.of(context).size.width;
+        final height = constraints.maxHeight.isFinite ? constraints.maxHeight : MediaQuery.of(context).size.height;
+
+        return AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            _updateCirclesForSize(width, height);
+            return Container(
+              width: double.infinity,
+              height: double.infinity,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: widget.gradientColors,
+                  stops: const [0.0, 0.4, 1.0],
                 ),
               ),
-            ],
-          ),
+              child: ClipRect(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ..._circles.map((circle) {
+                      return Positioned(
+                        left: circle.x,
+                        top: circle.y,
+                        child: Container(
+                          width: circle.radius * 2,
+                          height: circle.radius * 2,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withValues(alpha: circle.opacity),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.white.withValues(alpha: circle.opacity * 0.5),
+                                blurRadius: 40,
+                                spreadRadius: 10,
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                    // Дополнительный большой blur-слой для глубины
+                    Positioned(
+                      top: -50,
+                      right: -50,
+                      child: Container(
+                        width: 200,
+                        height: 200,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white.withValues(alpha: 0.05),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.white.withValues(alpha: 0.1),
+                              blurRadius: 100,
+                              spreadRadius: 40,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         );
       },
     );
+  }
+
+  void _updateCirclesForSize(double width, double height) {
+    for (var circle in _circles) {
+      circle.x += circle.speedX;
+      circle.y += circle.speedY;
+
+      if (circle.x < -100) circle.x = width + 50;
+      if (circle.x > width + 50) circle.x = -100;
+      if (circle.y < -100) circle.y = height + 50;
+      if (circle.y > height + 50) circle.y = -100;
+    }
   }
 }

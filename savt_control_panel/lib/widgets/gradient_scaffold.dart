@@ -209,20 +209,26 @@ class _GradientScaffoldState extends State<GradientScaffold> {
             // Логотип
             Padding(
               padding: EdgeInsets.only(top: _isTitleExpanded ? 2.0 : 0.0),
-              child: Image.network(
-                'https://savt.by/wp-content/uploads/2025/10/logo-small.png',
+              child: Image.asset(
+                'assets/images/logo-small.png',
                 height: 48,
                 width: 48,
                 fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => Container(
+                errorBuilder: (_, __, ___) => Image.network(
+                  'https://savt.by/wp-content/uploads/2025/10/logo-small.png',
                   height: 48,
                   width: 48,
-                  decoration: const BoxDecoration(
-                    color: Colors.white24,
-                    shape: BoxShape.circle,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => Container(
+                    height: 48,
+                    width: 48,
+                    decoration: const BoxDecoration(
+                      color: Colors.white24,
+                      shape: BoxShape.circle,
+                    ),
+                    child:
+                        const Icon(Icons.business, size: 26, color: Colors.white),
                   ),
-                  child:
-                      const Icon(Icons.business, size: 26, color: Colors.white),
                 ),
               ),
             ),

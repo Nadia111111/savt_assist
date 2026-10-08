@@ -210,20 +210,26 @@ class _SplashScreenState extends State<SplashScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               // Logo
-              Image.network(
-                'https://savt.by/wp-content/uploads/2025/10/logo-small.png',
+              Image.asset(
+                'assets/images/logo-small.png',
                 height: 90,
                 width: 90,
                 fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => Container(
+                errorBuilder: (_, __, ___) => Image.network(
+                  'https://savt.by/wp-content/uploads/2025/10/logo-small.png',
                   height: 90,
                   width: 90,
-                  decoration: const BoxDecoration(
-                    color: Colors.white24,
-                    shape: BoxShape.circle,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => Container(
+                    height: 90,
+                    width: 90,
+                    decoration: const BoxDecoration(
+                      color: Colors.white24,
+                      shape: BoxShape.circle,
+                    ),
+                    child:
+                        const Icon(Icons.business, size: 48, color: Colors.white),
                   ),
-                  child:
-                      const Icon(Icons.business, size: 48, color: Colors.white),
                 ),
               ),
               gapH32,

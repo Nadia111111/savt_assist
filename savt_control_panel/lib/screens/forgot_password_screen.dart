@@ -189,25 +189,39 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      body: Stack(
-        children: [
-          const Positioned.fill(
-            child: AnimatedBackground(
-              gradientColors: [
-                Color(0xFF054582),
-                Color(0xFF0a7ac2),
-                Color(0xFF0d3a5c)
-              ],
-            ),
-          ),
-          SafeArea(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                children: [
-                  const SizedBox(height: 40),
-                  _buildHeader(theme),
+      backgroundColor: const Color(0xFF054582),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final screenWidth = constraints.maxWidth;
+          final screenHeight = constraints.maxHeight;
+          final isDesktop = screenWidth >= 900;
+          return SizedBox(
+            width: screenWidth,
+            height: screenHeight,
+            child: Stack(
+              children: [
+                const Positioned.fill(
+                  child: AnimatedBackground(
+                    gradientColors: [
+                      Color(0xFF054582),
+                      Color(0xFF0a7ac2),
+                      Color(0xFF0d3a5c)
+                    ],
+                  ),
+                ),
+                SafeArea(
+                  child: SizedBox.expand(
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      padding: EdgeInsets.symmetric(
+                          horizontal: isDesktop ? 24 : 20),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 480),
+                          child: Column(
+                            children: [
+                              const SizedBox(height: 40),
+                              _buildHeader(theme),
                   const SizedBox(height: 32),
                   Container(
                     decoration: BoxDecoration(
@@ -401,10 +415,16 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               ),
             ),
           ),
-        ],
-      ),
-    );
-  }
+          ),
+          ),
+        ),
+      ],
+    ),
+  );
+},
+),
+);
+}
 
   String _getStepTitle() {
     switch (_verificationStep) {
@@ -435,22 +455,28 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Widget _buildHeader(ThemeData theme) {
     return Column(
       children: [
-        Image.network(
-          'https://savt.by/wp-content/uploads/2025/10/logo-small.png',
+        Image.asset(
+          'assets/images/logo-small.png',
           width: 200,
           height: 100,
           fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => Container(
+          errorBuilder: (_, __, ___) => Image.network(
+            'https://savt.by/wp-content/uploads/2025/10/logo-small.png',
             width: 200,
             height: 100,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [Colors.white70, Colors.white38]),
-              borderRadius: BorderRadius.circular(16),
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => Container(
+              width: 200,
+              height: 100,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: [Colors.white70, Colors.white38]),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Center(
+                  child: Text('SAVT',
+                      style: TextStyle(
+                          fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white))),
             ),
-            child: const Center(
-                child: Text('SAVT',
-                    style: TextStyle(
-                        fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white))),
           ),
         )
             .animate()
