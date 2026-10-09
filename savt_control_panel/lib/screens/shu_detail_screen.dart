@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:open_file/open_file.dart';
 import '../models/telemetry.dart';
@@ -135,9 +136,11 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
   Future<void> _openDownloadedDocument(String fileName) async {
     final localPath = await FileSaveHelper.getLocalFilePath(fileName);
     if (localPath != null) {
-      final result = await OpenFile.open(localPath);
-      if (result.type != ResultType.done && mounted) {
-        _showError('Не удалось открыть файл: ${result.message}');
+      if (!kIsWeb) {
+        final result = await OpenFile.open(localPath);
+        if (result.type != ResultType.done && mounted) {
+          _showError('Не удалось открыть файл: ${result.message}');
+        }
       }
     } else {
       _showError('Файл не найден на устройстве');
@@ -235,8 +238,8 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
         _downloadedFileNames.add(fileName);
       });
 
-      // Открываем файл
-      if (savePath != 'Галерея') {
+      // On web, browser handles download automatically, no need to open
+      if (savePath != 'Галерея' && !kIsWeb) {
         final result = await OpenFile.open(savePath);
         if (result.type != ResultType.done && mounted) {
           _showError('Не удалось открыть файл: ${result.message}');

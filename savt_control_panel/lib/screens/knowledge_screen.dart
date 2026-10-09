@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:open_file/open_file.dart';
 import '../services/file_save_helper.dart';
@@ -1126,11 +1127,13 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
     final attId = att['id'];
     final attTitle = att['title'] ?? 'Вложение';
 
-    // 1. Если файл уже скачан - открываем сразу без загрузки
-    final existingPath = await FileSaveHelper.getLocalFilePath(attTitle);
-    if (existingPath != null) {
-      await OpenFile.open(existingPath);
-      return;
+    // 1. Если файл уже скачан - открываем сразу без загрузки (только для мобильных платформ)
+    if (!kIsWeb) {
+      final existingPath = await FileSaveHelper.getLocalFilePath(attTitle);
+      if (existingPath != null) {
+        await OpenFile.open(existingPath);
+        return;
+      }
     }
 
     if (!mounted) return;
@@ -1196,7 +1199,8 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
     );
 
     try {
-      final savedPath = await knowledgeService.downloadKbAttachment(
+      // Use bytes-based download which works on both web and mobile
+      final bytes = await knowledgeService.downloadKbAttachmentBytes(
         articleId,
         attId,
         onProgress: (sent, total) {
@@ -1206,6 +1210,13 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
             });
           }
         },
+      );
+
+      // Save file using FileSaveHelper (handles web and mobile)
+      final savedPath = await FileSaveHelper.saveFile(
+        context: context,
+        bytes: bytes,
+        fileName: FileSaveHelper.ensureExtension(attTitle, null),
       );
 
       dialogSetState?.call(() {
@@ -1222,7 +1233,10 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
         ),
       );
 
-      await OpenFile.open(savedPath);
+      // On web, browser handles download automatically, no need to open
+      if (!kIsWeb) {
+        await OpenFile.open(savedPath);
+      }
     } catch (e) {
       dialogSetState?.call(() {
         isDownloading = false;

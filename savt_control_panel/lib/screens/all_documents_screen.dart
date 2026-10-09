@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:open_file/open_file.dart';
 import '../theme/app_spacing.dart';
 import '../services/cabinet_service.dart';
@@ -181,9 +182,12 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
         });
       }
 
-      final result = await OpenFile.open(savePath);
-      if (result.type != ResultType.done && mounted) {
-        _showError('Не удалось открыть файл: ${result.message}');
+      // On web, browser handles download automatically, no need to open
+      if (!kIsWeb) {
+        final result = await OpenFile.open(savePath);
+        if (result.type != ResultType.done && mounted) {
+          _showError('Не удалось открыть файл: ${result.message}');
+        }
       }
     } catch (e) {
       if (mounted) {

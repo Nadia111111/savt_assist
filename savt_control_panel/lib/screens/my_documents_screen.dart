@@ -1,6 +1,7 @@
 // lib/screens/my_documents_screen.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:open_file/open_file.dart';
 import '../theme/app_spacing.dart';
 import '../services/file_save_helper.dart';
@@ -123,9 +124,11 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
   Future<void> _openDownloadedDocument(String fileName) async {
     final localPath = await FileSaveHelper.getLocalFilePath(fileName);
     if (localPath != null) {
-      final result = await OpenFile.open(localPath);
-      if (result.type != ResultType.done && mounted) {
-        _showError('Не удалось открыть файл: ${result.message}');
+      if (!kIsWeb) {
+        final result = await OpenFile.open(localPath);
+        if (result.type != ResultType.done && mounted) {
+          _showError('Не удалось открыть файл: ${result.message}');
+        }
       }
     } else {
       _showError('Файл не найден на устройстве');
@@ -219,7 +222,7 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
         _downloadedFileNames.add(fileName);
       });
 
-      if (savePath != 'Галерея') {
+      if (savePath != 'Галерея' && !kIsWeb) {
         final result = await OpenFile.open(savePath);
         if (result.type != ResultType.done && mounted) {
           _showError('Не удалось открыть файл: ${result.message}');

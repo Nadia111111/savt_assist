@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'api_client.dart';
 import 'offline_service.dart';
@@ -108,6 +109,28 @@ class KnowledgeService {
         onReceiveProgress: onProgress,
       );
       return savePath;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  /// Download attachment as bytes (works on web and mobile)
+  Future<List<int>> downloadKbAttachmentBytes(
+    int articleId,
+    int attachmentId, {
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    try {
+      final response = await _apiClient.dio.get(
+        '/kb/articles/$articleId/attachments/$attachmentId/download',
+        options: Options(
+          responseType: ResponseType.bytes,
+          receiveTimeout: const Duration(seconds: 60),
+          sendTimeout: const Duration(seconds: 30),
+        ),
+        onReceiveProgress: onProgress,
+      );
+      return response.data as List<int>;
     } on DioException catch (e) {
       throw _handleError(e);
     }
