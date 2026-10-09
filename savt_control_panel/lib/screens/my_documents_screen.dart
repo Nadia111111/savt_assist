@@ -575,7 +575,7 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
                       GestureDetector(
                         onTap: () {
                           if (hasAccess) {
-                            if (isDownloaded) {
+                            if (isDownloaded && !kIsWeb) {
                               _openDownloadedDocument(fileName);
                             } else {
                               _downloadDocument(doc);
@@ -676,13 +676,13 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
                             height: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : (isDownloaded
+                        : (isDownloaded && !kIsWeb
                             ? Icon(Icons.visibility,
                                 color: theme.colorScheme.primary)
                             : Icon(Icons.download,
                                 color: theme.colorScheme.primary)),
-                    tooltip: isDownloaded ? 'Просмотреть' : 'Скачать',
-                    onPressed: isDownloaded
+                    tooltip: (isDownloaded && !kIsWeb) ? 'Просмотреть' : 'Скачать',
+                    onPressed: (isDownloaded && !kIsWeb)
                         ? () => _openDownloadedDocument(fileName)
                         : () => _downloadDocument(doc),
                   ),

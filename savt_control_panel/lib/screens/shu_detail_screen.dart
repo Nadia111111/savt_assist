@@ -882,7 +882,7 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
           margin: const EdgeInsets.only(bottom: 12),
           child: ListTile(
             onTap: hasAccess
-                ? () => isDownloaded
+                ? () => (isDownloaded && !kIsWeb)
                     ? _openDownloadedDocument(fileName)
                     : _downloadDocument(doc)
                 : null,
@@ -916,7 +916,7 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
                     height: 24,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : hasAccess
-                    ? (isDownloaded
+                    ? (isDownloaded && !kIsWeb
                         ? OutlinedButton.icon(
                             icon: const Icon(Icons.visibility, size: 16),
                             label: const Text('Просмотр'),
