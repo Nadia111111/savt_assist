@@ -16,6 +16,7 @@ import 'edit_profile_screen.dart';
 import '../widgets/auth_image.dart';
 import '../services/preferences_service.dart';
 import '../services/offline_service.dart';
+import '../services/auth_service.dart';
 import '../auth/auth_page.dart';
 import '../widgets/responsive_layout.dart';
 
@@ -597,6 +598,28 @@ class ProfileScreenState extends State<ProfileScreen> {
                         backgroundColor: Colors.green,
                       ),
                     );
+                  }
+                } on AuthException catch (e) {
+                  if (mounted) {
+                    Navigator.pop(this.context); // Close progress dialog
+                    if (e.statusCode == 403) {
+                      // Show the exact server message for employee deletion
+                      showDialog(
+                        context: this.context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Ошибка удаления'),
+                          content: Text(e.message),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: const Text('OK'),
+                            ),
+                          ],
+                        ),
+                      );
+                    } else {
+                      _showError('Ошибка удаления аккаунта: ${e.message}');
+                    }
                   }
                 } catch (e) {
                   if (mounted) {

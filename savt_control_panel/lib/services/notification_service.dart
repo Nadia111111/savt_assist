@@ -162,12 +162,19 @@ class NotificationService {
   // MARK: - Действия с уведомлениями
 
   /// Отметить уведомление как прочитанное
-  Future<void> markAsRead(int notificationId) async {
+  /// Возвращает true если успешно, false если уведомление не найдено (404)
+  Future<bool> markAsRead(int notificationId) async {
     print('🔵 [NotificationService] markAsRead: $notificationId');
     try {
       await _apiClient.dio.post('/notifications/$notificationId/read');
       print('🟢 [NotificationService] Отмечено как прочитанное');
+      return true;
     } on DioException catch (e) {
+      // 404 - уведомление не существует или чужое, игнорируем и обновляем список
+      if (e.response?.statusCode == 404) {
+        print('🟡 [NotificationService] Уведомление не найдено (404), игнорируем');
+        return false;
+      }
       print('🔴 [NotificationService] Ошибка markAsRead: ${e.type}');
       throw _handleError(e);
     }

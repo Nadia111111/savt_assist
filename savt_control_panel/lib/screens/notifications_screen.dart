@@ -223,11 +223,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
 
     try {
-      await _notificationService
+      final success = await _notificationService
           .markAsRead(notification.id)
           .timeout(const Duration(seconds: 5));
 
       if (!mounted) return;
+
+      if (!success) {
+        // 404 - уведомление не найдено, обновляем список
+        _loadNotifications(refresh: true);
+        return;
+      }
 
       setState(() {
         final index = _notifications.indexWhere((n) => n.id == notification.id);

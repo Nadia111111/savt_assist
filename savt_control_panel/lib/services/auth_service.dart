@@ -236,6 +236,12 @@ class AuthService {
       await _apiClient.dio.delete('/auth/me');
       await logout();
     } on DioException catch (e) {
+      if (e.response?.statusCode == 403) {
+        final detail = e.response?.data?['detail'];
+        if (detail is String && detail.isNotEmpty) {
+          throw AuthException(statusCode: 403, message: detail);
+        }
+      }
       throw _handleError(e);
     }
   }
