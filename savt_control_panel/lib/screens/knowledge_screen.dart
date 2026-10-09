@@ -74,6 +74,7 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
   String _sortOrder = 'desc';
   Timer? _searchDebounce;
   final List<int> _downloadingAttachmentIds = [];
+  final Set<String> _downloadedAttachmentNames = {};
 
   final ScrollController _scrollController = ScrollController();
   final ScrollController _faqScrollController = ScrollController();
@@ -1123,17 +1124,33 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
     );
   }
 
+  Future<void> _openDownloadedAttachment(String fileName) async {
+    final localPath = await FileSaveHelper.getLocalFilePath(fileName);
+    if (localPath != null) {
+      final result = await OpenFile.open(localPath);
+      if (result.type != ResultType.done && mounted) {
+        _showError('Не удалось открыть файл: ${result.message}');
+      }
+    } else {
+      _showError('Файл не найден на устройстве');
+    }
+  }
+
   Future<void> _downloadAttachment(int articleId, Map<String, dynamic> att) async {
     final attId = att['id'];
     final attTitle = att['title'] ?? 'Вложение';
+    final fileUrl = att['file_url'] ?? att['url'];
+    final fileName = FileSaveHelper.ensureExtension(attTitle, fileUrl);
 
-    // 1. Если файл уже скачан - открываем сразу без загрузки (только для мобильных платформ)
-    if (!kIsWeb) {
-      final existingPath = await FileSaveHelper.getLocalFilePath(attTitle);
-      if (existingPath != null) {
-        await OpenFile.open(existingPath);
-        return;
+    // Если файл уже скачан, открываем его без повторного скачивания
+    if (await FileSaveHelper.isFileDownloaded(fileName)) {
+      if (mounted) {
+        setState(() {
+          _downloadedAttachmentNames.add(fileName);
+        });
       }
+      await _openDownloadedAttachment(fileName);
+      return;
     }
 
     if (!mounted) return;
@@ -1199,7 +1216,6 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
     );
 
     try {
-      // Use bytes-based download which works on both web and mobile
       final bytes = await knowledgeService.downloadKbAttachmentBytes(
         articleId,
         attId,
@@ -1212,11 +1228,10 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
         },
       );
 
-      // Save file using FileSaveHelper (handles web and mobile)
-      final savedPath = await FileSaveHelper.saveFile(
+      final savePath = await FileSaveHelper.saveFile(
         context: context,
         bytes: bytes,
-        fileName: FileSaveHelper.ensureExtension(attTitle, null),
+        fileName: fileName,
       );
 
       dialogSetState?.call(() {
@@ -1227,15 +1242,22 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Файл сохранен: $savedPath'),
+          content: Text('Файл сохранен: $savePath'),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
         ),
       );
 
+      if (mounted) {
+        setState(() {
+          _downloadingAttachmentIds.remove(attId);
+          _downloadedAttachmentNames.add(fileName);
+        });
+      }
+
       // On web, browser handles download automatically, no need to open
       if (!kIsWeb) {
-        await OpenFile.open(savedPath);
+        await OpenFile.open(savePath);
       }
     } catch (e) {
       dialogSetState?.call(() {
@@ -1259,6 +1281,22 @@ void _showArticleDetail(int articleId) async {
        final article = await knowledgeService.getKbArticleDetail(articleId);
        if (article['is_favorited'] is bool) {
          favoritesService.syncSingleArticle(articleId, article['is_favorited'] as bool);
+       }
+       // Check for downloaded attachments
+       if (article['attachments'] != null && article['attachments'].isNotEmpty) {
+         final downloaded = <String>{};
+         for (final att in article['attachments']) {
+           final fileUrl = att['file_url'] ?? att['url'];
+           final fileName = FileSaveHelper.ensureExtension(att['title'] ?? 'Вложение', fileUrl);
+           if (await FileSaveHelper.isFileDownloaded(fileName)) {
+             downloaded.add(fileName);
+           }
+         }
+         if (mounted) {
+           setState(() {
+             _downloadedAttachmentNames.addAll(downloaded);
+           });
+         }
        }
        if (!mounted) return;
        await showModalBottomSheet(
@@ -1339,28 +1377,42 @@ Text(article['description'] ?? '',
                             color: theme.colorScheme.onSurfaceVariant,
                             height: 1.6),
                         textAlign: TextAlign.start),
-                   if (article['attachments'] != null &&
-                       article['attachments'].isNotEmpty) ...[
-                     const SizedBox(height: AppSpacing.xl),
-                     Text('Вложения:', style: theme.textTheme.titleSmall),
-                      ...article['attachments'].map<Widget>((att) {
-                        final attId = att['id'];
-                        final isDownloading = _downloadingAttachmentIds.contains(attId);
-                        return ListTile(
-                          title: Text(att['title']),
-                          trailing: isDownloading
-                              ? const SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : ElevatedButton(
-                                  onPressed: () => _downloadAttachment(articleId, att),
-                                  child: const Text('Скачать'),
-                                ),
-                        );
-                      }),
-                   ],
+if (article['attachments'] != null &&
+                        article['attachments'].isNotEmpty) ...[
+                      const SizedBox(height: AppSpacing.xl),
+                      Text('Вложения:', style: theme.textTheme.titleSmall),
+                       ...article['attachments'].map<Widget>((att) {
+                         final attId = att['id'];
+                         final fileUrl = att['file_url'] ?? att['url'];
+                         final fileName = FileSaveHelper.ensureExtension(att['title'] ?? 'Вложение', fileUrl);
+                         final isDownloaded = _downloadedAttachmentNames.contains(fileName);
+                         final isDownloading = _downloadingAttachmentIds.contains(attId);
+                         return ListTile(
+                           title: Text(att['title']),
+trailing: isDownloading
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : isDownloaded && !kIsWeb
+                                    ? OutlinedButton.icon(
+                                        icon: const Icon(Icons.visibility, size: 16),
+                                        label: const Text('Просмотр'),
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: theme.colorScheme.primary,
+                                          side: BorderSide(color: theme.colorScheme.primary),
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                        ),
+                                        onPressed: () => _openDownloadedAttachment(fileName),
+                                      )
+                                    : ElevatedButton(
+                                        onPressed: () => _downloadAttachment(articleId, att),
+                                        child: const Text('Скачать'),
+                                      ),
+                         );
+                       }),
+                    ],
                    const SizedBox(height: 24),
                  ],
               ),

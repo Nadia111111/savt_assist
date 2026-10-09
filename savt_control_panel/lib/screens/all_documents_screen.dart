@@ -424,7 +424,7 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
           ],
         ),
         trailing: hasAccess
-            ? (isDownloaded
+            ? (isDownloaded && !kIsWeb
                 ? OutlinedButton.icon(
                     icon: const Icon(Icons.visibility, size: 16),
                     label: const Text('Просмотр'),
