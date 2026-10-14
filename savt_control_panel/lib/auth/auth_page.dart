@@ -50,6 +50,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
   String _userType = 'private';
   bool _rememberMe = true;
   bool _agreeToPolicy = false;
+  bool _isAdult = false;
 
   static const _policySections = [
     {
@@ -262,6 +263,10 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
     }
     if (!_agreeToPolicy) {
       _showErrorSnackBar('Необходимо согласие с политикой обработки данных');
+      return;
+    }
+    if (!_isAdult) {
+      _showErrorSnackBar('Для регистрации необходимо подтвердить, что вам 16 лет или более');
       return;
     }
 
@@ -1197,17 +1202,22 @@ void _showSuccessSnackBar(String message) {
               onChanged: (val) => setState(() => _rememberMe = val ?? false),
               title: 'Запомнить меня'),
           const SizedBox(height: 12),
-_buildCheckbox(
+          _buildCheckbox(
               value: _agreeToPolicy,
               onChanged: (val) {},
               title: 'Я согласен с политикой обработки данных',
               isPolicy: true,
               onTap: _showPrivacyPolicyDialog),
+          const SizedBox(height: 12),
+          _buildCheckbox(
+              value: _isAdult,
+              onChanged: (val) => setState(() => _isAdult = val ?? false),
+              title: 'Я подтверждаю, что мне 16 лет или более'),
           const SizedBox(height: 20),
           _buildSubmitButton(
               text: 'Зарегистрироваться',
               onPressed:
-                  (!_agreeToPolicy || _isLoading) ? null : _handleRegister),
+                  (!_agreeToPolicy || !_isAdult || _isLoading) ? null : _handleRegister),
         ],
       ),
     );
