@@ -1,3 +1,4 @@
+﻿import 'package:flutter/foundation.dart';
 // lib/widgets/gradient_scaffold.dart
 import 'package:flutter/material.dart';
 import '../services/network_service.dart';
@@ -190,12 +191,10 @@ class _GradientScaffoldState extends State<GradientScaffold> {
         constraints: const BoxConstraints(minHeight: 56),
         padding: EdgeInsets.symmetric(
           horizontal: isDesktop ? 24 : 8,
-          vertical: _isTitleExpanded ? 6 : 0,
+          vertical: (kIsWeb ? false : _isTitleExpanded) ? 6 : 0,
         ),
         child: Row(
-          crossAxisAlignment: _isTitleExpanded
-              ? CrossAxisAlignment.start
-              : CrossAxisAlignment.center,
+          crossAxisAlignment: (kIsWeb ? false : _isTitleExpanded) ? CrossAxisAlignment.start : CrossAxisAlignment.center,
           children: [
             // Кнопка «назад» (если есть) — слева от логотипа
             if (widget.appBarLeading != null)
@@ -208,7 +207,7 @@ class _GradientScaffoldState extends State<GradientScaffold> {
               ),
             // Логотип
             Padding(
-              padding: EdgeInsets.only(top: _isTitleExpanded ? 2.0 : 0.0),
+              padding: EdgeInsets.only(top: (kIsWeb ? false : _isTitleExpanded) ? 2.0 : 0.0),
               child: Image.asset(
                 'assets/images/logo-small.png',
                 height: 48,
@@ -238,11 +237,7 @@ class _GradientScaffoldState extends State<GradientScaffold> {
               child: GestureDetector(
                 key: _titleKey,
                 behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  setState(() {
-                    _isTitleExpanded = !_isTitleExpanded;
-                  });
-                },
+                onTap: kIsWeb ? null : () { setState(() { _isTitleExpanded = !_isTitleExpanded; }); },
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Text(
@@ -252,17 +247,15 @@ class _GradientScaffoldState extends State<GradientScaffold> {
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
-                    maxLines: _isTitleExpanded ? null : 1,
-                    overflow: _isTitleExpanded
-                        ? TextOverflow.visible
-                        : TextOverflow.ellipsis,
+                    maxLines: (kIsWeb ? false : _isTitleExpanded) ? null : 1,
+                    overflow: (kIsWeb ? false : _isTitleExpanded) ? TextOverflow.visible : TextOverflow.ellipsis,
                   ),
                 ),
               ),
             ),
             if (widget.appBarAction != null)
               Padding(
-                padding: EdgeInsets.only(top: _isTitleExpanded ? 2.0 : 0.0),
+                padding: EdgeInsets.only(top: (kIsWeb ? false : _isTitleExpanded) ? 2.0 : 0.0),
                 child: widget.appBarAction!,
               ),
           ],
@@ -271,3 +264,8 @@ class _GradientScaffoldState extends State<GradientScaffold> {
     );
   }
 }
+
+
+
+
+
