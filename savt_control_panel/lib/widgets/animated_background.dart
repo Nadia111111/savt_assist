@@ -65,18 +65,6 @@ class _AnimatedBackgroundState extends State<AnimatedBackground>
     super.dispose();
   }
 
-  void _updateCircles() {
-    for (var circle in _circles) {
-      circle.x += circle.speedX;
-      circle.y += circle.speedY;
-
-      if (circle.x < -100) circle.x = 500;
-      if (circle.x > 500) circle.x = -100;
-      if (circle.y < -100) circle.y = 400;
-      if (circle.y > 400) circle.y = -100;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
