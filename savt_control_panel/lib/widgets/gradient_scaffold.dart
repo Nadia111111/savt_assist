@@ -1,4 +1,3 @@
-﻿import 'package:flutter/foundation.dart';
 // lib/widgets/gradient_scaffold.dart
 import 'package:flutter/material.dart';
 import '../services/network_service.dart';
@@ -57,6 +56,14 @@ class _GradientScaffoldState extends State<GradientScaffold> {
     setState(() {
       _isTitleExpanded = false;
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant GradientScaffold oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.appBarTitle != widget.appBarTitle) {
+      _isTitleExpanded = false;
+    }
   }
 
   @override
@@ -183,6 +190,12 @@ class _GradientScaffoldState extends State<GradientScaffold> {
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth >= 900;
 
+    const titleStyle = TextStyle(
+      fontSize: 18,
+      fontWeight: FontWeight.bold,
+      color: Colors.white,
+    );
+
     return AnimatedSize(
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeInOut,
@@ -191,10 +204,10 @@ class _GradientScaffoldState extends State<GradientScaffold> {
         constraints: const BoxConstraints(minHeight: 56),
         padding: EdgeInsets.symmetric(
           horizontal: isDesktop ? 24 : 8,
-          vertical: (kIsWeb ? false : _isTitleExpanded) ? 6 : 0,
+          vertical: _isTitleExpanded ? 6 : 0,
         ),
         child: Row(
-          crossAxisAlignment: (kIsWeb ? false : _isTitleExpanded) ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+          crossAxisAlignment: _isTitleExpanded ? CrossAxisAlignment.start : CrossAxisAlignment.center,
           children: [
             // Кнопка «назад» (если есть) — слева от логотипа
             if (widget.appBarLeading != null)
@@ -207,7 +220,7 @@ class _GradientScaffoldState extends State<GradientScaffold> {
               ),
             // Логотип
             Padding(
-              padding: EdgeInsets.only(top: (kIsWeb ? false : _isTitleExpanded) ? 2.0 : 0.0),
+              padding: EdgeInsets.only(top: _isTitleExpanded ? 2.0 : 0.0),
               child: Image.asset(
                 'assets/images/logo-small.png',
                 height: 48,
@@ -234,28 +247,56 @@ class _GradientScaffoldState extends State<GradientScaffold> {
             const SizedBox(width: 8),
             // Название страницы (займёт всё доступное пространство)
             Expanded(
-              child: GestureDetector(
-                key: _titleKey,
-                behavior: HitTestBehavior.opaque,
-                onTap: kIsWeb ? null : () { setState(() { _isTitleExpanded = !_isTitleExpanded; }); },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Text(
-                    widget.appBarTitle!,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  bool isOverflowing = false;
+                  if (constraints.maxWidth > 0) {
+                    final textPainter = TextPainter(
+                      text: TextSpan(
+                        text: widget.appBarTitle!,
+                        style: titleStyle,
+                      ),
+                      textDirection: Directionality.of(context),
+                      textScaler: MediaQuery.textScalerOf(context),
+                      maxLines: 1,
+                    )..layout(maxWidth: constraints.maxWidth);
+
+                    isOverflowing = textPainter.didExceedMaxLines;
+                    textPainter.dispose();
+                  }
+
+                  final bool canExpand = isOverflowing;
+                  final bool isExpanded = _isTitleExpanded && canExpand;
+
+                  return MouseRegion(
+                    cursor: canExpand ? SystemMouseCursors.click : MouseCursor.defer,
+                    child: GestureDetector(
+                      key: _titleKey,
+                      behavior: HitTestBehavior.opaque,
+                      onTap: canExpand
+                          ? () {
+                              setState(() {
+                                _isTitleExpanded = !_isTitleExpanded;
+                              });
+                            }
+                          : null,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Text(
+                          widget.appBarTitle!,
+                          style: titleStyle,
+                          maxLines: isExpanded ? null : 1,
+                          overflow: isExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
+                        ),
+                      ),
                     ),
-                    maxLines: (kIsWeb ? false : _isTitleExpanded) ? null : 1,
-                    overflow: (kIsWeb ? false : _isTitleExpanded) ? TextOverflow.visible : TextOverflow.ellipsis,
-                  ),
-                ),
+                  );
+                },
               ),
             ),
             if (widget.appBarAction != null)
               Padding(
-                padding: EdgeInsets.only(top: (kIsWeb ? false : _isTitleExpanded) ? 2.0 : 0.0),
+                padding: EdgeInsets.only(top: _isTitleExpanded ? 2.0 : 0.0),
                 child: widget.appBarAction!,
               ),
           ],
