@@ -1,5 +1,6 @@
 // lib/screens/knowledge_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
@@ -31,12 +32,17 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
   final int _currentIndex = 1;
   String _searchQuery = '';
   bool _isSearchExpanded = false;
-  final FocusNode _searchFocusNode = FocusNode();
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode(canRequestFocus: false);
 
   bool _isHeaderVisible = true;
 
   void resetState() {
     if (mounted) {
+      _searchController.clear();
+      _searchFocusNode.canRequestFocus = false;
+      _searchFocusNode.unfocus(disposition: UnfocusDisposition.previouslyFocusedChild);
+      FocusManager.instance.primaryFocus?.unfocus();
       setState(() {
         _isSearchExpanded = false;
         _searchQuery = '';
@@ -109,7 +115,12 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
     _scrollController.addListener(() {
       if (_scrollController.hasClients) {
         final direction = _scrollController.position.userScrollDirection;
-        if (direction == ScrollDirection.reverse && _isHeaderVisible) {
+        final pixels = _scrollController.position.pixels;
+        if (pixels <= 0 && !_isHeaderVisible) {
+          setState(() {
+            _isHeaderVisible = true;
+          });
+        } else if (direction == ScrollDirection.reverse && _isHeaderVisible && !_isSearchExpanded) {
           setState(() {
             _isHeaderVisible = false;
           });
@@ -128,7 +139,12 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
     _faqScrollController.addListener(() {
       if (_faqScrollController.hasClients) {
         final direction = _faqScrollController.position.userScrollDirection;
-        if (direction == ScrollDirection.reverse && _isHeaderVisible) {
+        final pixels = _faqScrollController.position.pixels;
+        if (pixels <= 0 && !_isHeaderVisible) {
+          setState(() {
+            _isHeaderVisible = true;
+          });
+        } else if (direction == ScrollDirection.reverse && _isHeaderVisible && !_isSearchExpanded) {
           setState(() {
             _isHeaderVisible = false;
           });
@@ -189,6 +205,7 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
     _scrollController.dispose();
     _faqScrollController.dispose();
     _tabController.dispose();
+    _searchController.dispose();
     _searchFocusNode.dispose();
     _searchDebounce?.cancel();
      super.dispose();
@@ -357,22 +374,44 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
             icon: Icon(_isSearchExpanded ? Icons.close : Icons.search,
                 color: Colors.white),
             onPressed: () {
-              setState(() {
-                _isSearchExpanded = !_isSearchExpanded;
-                if (!_isSearchExpanded) _searchQuery = '';
-              });
               if (_isSearchExpanded) {
-                Future.delayed(const Duration(milliseconds: 100), () {
-                  if (mounted) {
-                    FocusScope.of(this.context).requestFocus(_searchFocusNode);
+                final hadQuery = _searchQuery.isNotEmpty || _searchController.text.isNotEmpty;
+                _searchFocusNode.canRequestFocus = false;
+                _searchFocusNode.unfocus(disposition: UnfocusDisposition.previouslyFocusedChild);
+                FocusManager.instance.primaryFocus?.unfocus();
+                setState(() {
+                  _isSearchExpanded = false;
+                  _searchQuery = '';
+                  _searchController.clear();
+                  _isHeaderVisible = true;
+                });
+                if (hadQuery) {
+                  _loadArticles(refresh: true);
+                  _loadFaq(refresh: true);
+                }
+              } else {
+                _searchFocusNode.canRequestFocus = true;
+                setState(() {
+                  _isHeaderVisible = true;
+                  _isSearchExpanded = true;
+                });
+                Future.delayed(const Duration(milliseconds: 150), () {
+                  if (mounted && _isSearchExpanded) {
+                    _searchFocusNode.requestFocus();
                   }
                 });
-              } else {
-                FocusScope.of(context).unfocus();
               }
             },
           ),
           PopupMenuButton<String>(
+            onOpened: () {
+              FocusManager.instance.primaryFocus?.unfocus();
+            },
+            color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1A2332) : Colors.white,
+            surfaceTintColor: Colors.transparent,
+            elevation: 8,
+            shadowColor: Colors.black.withValues(alpha: 0.15),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             child: Row(
               children: [
                 const Icon(Icons.sort, color: Colors.white, size: 20),
@@ -397,14 +436,18 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
             },
             itemBuilder: (context) {
               final theme = Theme.of(context);
+              final isDark = theme.brightness == Brightness.dark;
+              final textColor = isDark ? Colors.white : const Color(0xFF1F2937);
+              final primaryColor = theme.colorScheme.primary;
+              final inactiveColor = isDark ? Colors.grey : const Color(0xFF94A3B8);
               return [
                 PopupMenuItem(
                   value: 'new',
                   child: Row(
                     children: [
-                      Icon(Icons.arrow_downward, color: (_sortBy == 'created_at' && _sortOrder == 'desc') ? theme.colorScheme.primary : Colors.grey),
+                      Icon(Icons.arrow_downward, color: (_sortBy == 'created_at' && _sortOrder == 'desc') ? primaryColor : inactiveColor),
                       const SizedBox(width: AppSpacing.sm),
-                      const Text('По дате (новые)'),
+                      Text('По дате (новые)', style: TextStyle(color: textColor, fontWeight: (_sortBy == 'created_at' && _sortOrder == 'desc') ? FontWeight.w600 : FontWeight.normal)),
                     ],
                   ),
                 ),
@@ -412,9 +455,9 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
                   value: 'old',
                   child: Row(
                     children: [
-                      Icon(Icons.arrow_upward, color: (_sortBy == 'created_at' && _sortOrder == 'asc') ? theme.colorScheme.primary : Colors.grey),
+                      Icon(Icons.arrow_upward, color: (_sortBy == 'created_at' && _sortOrder == 'asc') ? primaryColor : inactiveColor),
                       const SizedBox(width: AppSpacing.sm),
-                      const Text('По дате (старые)'),
+                      Text('По дате (старые)', style: TextStyle(color: textColor, fontWeight: (_sortBy == 'created_at' && _sortOrder == 'asc') ? FontWeight.w600 : FontWeight.normal)),
                     ],
                   ),
                 ),
@@ -422,9 +465,9 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
                   value: 'alpha_asc',
                   child: Row(
                     children: [
-                      Icon(Icons.sort_by_alpha, color: (_sortBy == 'title' && _sortOrder == 'asc') ? theme.colorScheme.primary : Colors.grey),
+                      Icon(Icons.sort_by_alpha, color: (_sortBy == 'title' && _sortOrder == 'asc') ? primaryColor : inactiveColor),
                       const SizedBox(width: AppSpacing.sm),
-                      const Text('По названию (А-Я)'),
+                      Text('По названию (А-Я)', style: TextStyle(color: textColor, fontWeight: (_sortBy == 'title' && _sortOrder == 'asc') ? FontWeight.w600 : FontWeight.normal)),
                     ],
                   ),
                 ),
@@ -432,9 +475,9 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
                   value: 'alpha_desc',
                   child: Row(
                     children: [
-                      Icon(Icons.sort_by_alpha, color: (_sortBy == 'title' && _sortOrder == 'desc') ? theme.colorScheme.primary : Colors.grey),
+                      Icon(Icons.sort_by_alpha, color: (_sortBy == 'title' && _sortOrder == 'desc') ? primaryColor : inactiveColor),
                       const SizedBox(width: AppSpacing.sm),
-                      const Text('По названию (Я-А)'),
+                      Text('По названию (Я-А)', style: TextStyle(color: textColor, fontWeight: (_sortBy == 'title' && _sortOrder == 'desc') ? FontWeight.w600 : FontWeight.normal)),
                     ],
                   ),
                 ),
@@ -454,21 +497,52 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   AnimatedContainer(
-                    duration: const Duration(milliseconds: 500),
+                    duration: const Duration(milliseconds: 320),
                     curve: Curves.easeInOutCubic,
-                 padding: _isSearchExpanded
-                     ? const EdgeInsets.fromLTRB(AppSpacing.base, AppSpacing.md, AppSpacing.base, AppSpacing.sm)
-                     : EdgeInsets.zero,
-                    child: _isSearchExpanded
-                        ? _buildSearchField()
-                        : const SizedBox.shrink(),
+                    height: _isSearchExpanded ? 68 : 0,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: _isSearchExpanded ? AppSpacing.base : 0,
+                      vertical: _isSearchExpanded ? 6 : 0,
+                    ),
+                    child: ClipRect(
+                      child: OverflowBox(
+                        minHeight: 0,
+                        maxHeight: 68,
+                        alignment: Alignment.topCenter,
+                        child: AnimatedOpacity(
+                          opacity: _isSearchExpanded ? 1.0 : 0.0,
+                          duration: const Duration(milliseconds: 220),
+                          child: ExcludeFocus(
+                            excluding: !_isSearchExpanded,
+                            child: IgnorePointer(
+                              ignoring: !_isSearchExpanded,
+                              child: _buildSearchField(),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                   // TabBar
                   Container(
                     margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Theme.of(context).colorScheme.surfaceContainerHighest
+                          : Colors.white,
                       borderRadius: BorderRadius.circular(16),
+                      border: Theme.of(context).brightness == Brightness.dark
+                          ? null
+                          : Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.4)),
+                      boxShadow: Theme.of(context).brightness == Brightness.dark
+                          ? null
+                          : [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.03),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                     ),
                     child: TabBar(
                       controller: _tabController,
@@ -487,9 +561,6 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
                    // Category chips (только для статей)
                    if (_tabController.index == 0 && _categories.isNotEmpty)
                      _buildCategoryChips(),
-                   // Строка с сортировкой и фильтрами (только для статей)
-                  if (_tabController.index == 0)
-                    _buildSortingRow(),
                   // Category chips для FAQ
                   if (_tabController.index == 1 && _faqCategories.isNotEmpty)
                     _buildFaqCategoryChips(),
@@ -497,7 +568,7 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
               ),
               secondChild: const SizedBox.shrink(),
               crossFadeState: _isHeaderVisible ? CrossFadeState.showFirst : CrossFadeState.showSecond,
-              duration: const Duration(milliseconds: 500),
+              duration: const Duration(milliseconds: 300),
             ),
             Expanded(
               child: RefreshIndicator(
@@ -534,7 +605,9 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
         borderRadius: BorderRadius.circular(16),
       ),
       child: TextField(
+        controller: _searchController,
         focusNode: _searchFocusNode,
+        enabled: _isSearchExpanded,
         onChanged: (value) {
           setState(() => _searchQuery = value);
           _searchDebounce?.cancel();
@@ -567,22 +640,6 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
     );
   }
 
-  Widget _buildSortingRow() {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.base, vertical: AppSpacing.xs),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            'Статей найдено: ${_articles.length}',
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-        ],
-      ),
-    );
-  }
-
   List<CategoryNode> _buildCategoryTree(List<Map<String, dynamic>> flatCategories) {
     final Map<int, CategoryNode> nodeMap = {};
     for (final cat in flatCategories) {
@@ -610,63 +667,77 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
 
   void _showCategoryTreeBottomSheet() {
     final tree = _buildCategoryTree(_categories);
+    final theme = Theme.of(context);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
       builder: (context) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          minChildSize: 0.3,
-          maxChildSize: 0.9,
-          expand: false,
-          builder: (context, scrollController) {
-            return Container(
-              padding: const EdgeInsets.all(AppSpacing.base),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(2),
+        double dragDistance = 0;
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.75,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.all(AppSpacing.base),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onVerticalDragStart: (_) => dragDistance = 0,
+                onVerticalDragUpdate: (details) {
+                  dragDistance += details.primaryDelta ?? 0;
+                },
+                onVerticalDragEnd: (details) {
+                  if ((details.primaryVelocity != null && details.primaryVelocity! > 100) || dragDistance > 50) {
+                    Navigator.of(context).pop();
+                  }
+                },
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.outline.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
-                  ),
-                  const Text(
-                    'Выберите категорию',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-                  ListTile(
-                    title: const Text('Все категории'),
-                    leading: const Icon(Icons.category_outlined),
-                    selected: _selectedCategoryId == null,
-                    onTap: () {
-                      setState(() {
-                        _selectedCategoryId = null;
-                        _loadArticles(refresh: true);
-                      });
-                      Navigator.pop(context);
-                    },
-                  ),
-                  const Divider(),
-                  Expanded(
-                    child: ListView(
-                      controller: scrollController,
-                      children: tree.map((node) => _buildCategoryNodeTile(node, context)).toList(),
+                    Text(
+                      'Выберите категорию',
+                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                  ],
+                ),
               ),
-            );
-          },
+              ListTile(
+                title: const Text('Все категории'),
+                leading: const Icon(Icons.category_outlined),
+                selected: _selectedCategoryId == null,
+                onTap: () {
+                  setState(() {
+                    _selectedCategoryId = null;
+                    _loadArticles(refresh: true);
+                  });
+                  Navigator.pop(context);
+                },
+              ),
+              const Divider(),
+              Expanded(
+                child: ListView(
+                  children: tree.map((node) => _buildCategoryNodeTile(node, context)).toList(),
+                ),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -740,9 +811,24 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 10),
           decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest,
+            color: theme.brightness == Brightness.dark
+                ? theme.colorScheme.surfaceContainerHighest
+                : Colors.white,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.3)),
+            border: Border.all(
+              color: theme.brightness == Brightness.dark
+                  ? theme.colorScheme.outline.withValues(alpha: 0.3)
+                  : theme.colorScheme.outline.withValues(alpha: 0.4),
+            ),
+            boxShadow: theme.brightness == Brightness.dark
+                ? null
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
           ),
           child: Row(
             children: [
@@ -767,80 +853,97 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      enableDrag: false,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          minChildSize: 0.3,
-          maxChildSize: 0.9,
-          expand: false,
-          builder: (context, scrollController) {
-            return Container(
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              padding: const EdgeInsets.all(AppSpacing.base),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.outline.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(2),
+        double dragDistance = 0;
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.75,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.all(AppSpacing.base),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onVerticalDragStart: (_) => dragDistance = 0,
+                onVerticalDragUpdate: (details) {
+                  dragDistance += details.primaryDelta ?? 0;
+                },
+                onVerticalDragEnd: (details) {
+                  if ((details.primaryVelocity != null && details.primaryVelocity! > 100) || dragDistance > 50) {
+                    Navigator.of(context).pop();
+                  }
+                },
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.outline.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
-                  ),
-                  Text(
-                    'Выберите категорию',
-                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-                  ListTile(
-                    title: const Text('Все категории'),
-                    leading: Icon(Icons.category_outlined,
-                        color: _selectedFaqCategoryId == null ? theme.colorScheme.primary : null),
-                    selected: _selectedFaqCategoryId == null,
-                    onTap: () {
-                      setState(() {
-                        _selectedFaqCategoryId = null;
-                        _loadFaq(refresh: true);
-                      });
-                      Navigator.pop(context);
-                    },
-                  ),
-                  const Divider(),
-                  Expanded(
-                    child: ListView.builder(
-                      controller: scrollController,
-                      itemCount: _faqCategories.length,
-                      itemBuilder: (context, index) {
-                        final cat = _faqCategories[index];
-                        final isSelected = _selectedFaqCategoryId == cat['id'];
-                        return ListTile(
-                          title: Text(cat['name']),
-                          leading: Icon(Icons.folder_outlined,
-                              color: isSelected ? theme.colorScheme.primary : null),
-                          selected: isSelected,
-                          onTap: () {
-                            setState(() {
-                              _selectedFaqCategoryId = cat['id'];
-                              _loadFaq(refresh: true);
-                            });
-                            Navigator.pop(context);
-                          },
-                        );
-                      },
+                    Text(
+                      'Выберите категорию',
+                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                  ],
+                ),
               ),
-            );
-          },
+              Material(
+                color: theme.colorScheme.surface,
+                child: ListTile(
+                  title: const Text('Все категории'),
+                  leading: Icon(Icons.category_outlined,
+                      color: _selectedFaqCategoryId == null ? theme.colorScheme.primary : null),
+                  selected: _selectedFaqCategoryId == null,
+                  onTap: () {
+                    setState(() {
+                      _selectedFaqCategoryId = null;
+                      _loadFaq(refresh: true);
+                    });
+                    Navigator.pop(context);
+                  },
+                ),
+              ),
+              const Divider(),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: _faqCategories.length,
+                  itemBuilder: (context, index) {
+                    final cat = _faqCategories[index];
+                    final isSelected = _selectedFaqCategoryId == cat['id'];
+                    return Material(
+                      color: theme.colorScheme.surface,
+                      child: ListTile(
+                        title: Text(cat['name']),
+                        leading: Icon(Icons.folder_outlined,
+                            color: isSelected ? theme.colorScheme.primary : null),
+                        selected: isSelected,
+                        onTap: () {
+                          setState(() {
+                            _selectedFaqCategoryId = cat['id'];
+                            _loadFaq(refresh: true);
+                          });
+                          Navigator.pop(context);
+                        },
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -904,11 +1007,12 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
         ),
       );
     }
-    return ListView.separated(
-      cacheExtent: 250, controller: _scrollController,
-      padding: const EdgeInsets.all(AppSpacing.base),
+    return ListView.builder(
+      cacheExtent: 250,
+      controller: _scrollController,
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       itemCount: _articles.length + (_hasMoreArticles ? 1 : 0),
-      separatorBuilder: (context, index) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         if (index == _articles.length) {
           if (_articlesError) {
@@ -947,22 +1051,28 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
     );
   }
 
-   Widget _buildArticleCard(Map<String, dynamic> article, int index) {
-     final theme = Theme.of(context);
-     final int articleId = (article['id'] is num)
-         ? (article['id'] as num).toInt()
-         : (int.tryParse(article['id']?.toString() ?? '') ?? 0);
-     final bool isFav = favoritesService.isArticleFavorite(
-       articleId,
-       fallback: article['is_favorited'] as bool?,
-     );
-     return AnimatedCard(
-       index: index,
-       onTap: () => _showArticleDetail(articleId),
-       child: Column(
+  Widget _buildArticleCard(Map<String, dynamic> article, int index) {
+    final theme = Theme.of(context);
+    final int articleId = (article['id'] is num)
+        ? (article['id'] as num).toInt()
+        : (int.tryParse(article['id']?.toString() ?? '') ?? 0);
+    final bool isFav = favoritesService.isArticleFavorite(
+      articleId,
+      fallback: article['is_favorited'] as bool?,
+    );
+    final hasTags = article['tags'] != null && (article['tags'] as List).isNotEmpty;
+    final hasAttachments = (article['attachment_count'] ?? 0) > 0;
+
+    return AnimatedCard(
+      index: index,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      onTap: () => _showArticleDetail(articleId),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
                 width: 44,
@@ -979,50 +1089,31 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(article['title'],
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700)),
-              ),
-              if ((article['attachment_count'] ?? 0) > 0)
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.2),
-                      shape: BoxShape.circle),
-                  child: Icon(Icons.attach_file,
-                      size: 14, color: theme.colorScheme.primary),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(article['description'] ?? '',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              textAlign: TextAlign.start,
-            ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              if (article['tags'] != null && article['tags'].isNotEmpty)
-                ...article['tags'].take(2).map<Widget>((tag) => Padding(
-                      padding: const EdgeInsets.only(right: AppSpacing.sm),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(tag['name'],
-                            style: TextStyle(
-                                fontSize: 11,
-                                color: theme.colorScheme.primary,
-                                fontWeight: FontWeight.w600)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      article['title'] ?? '',
+                      style: theme.textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                      textAlign: TextAlign.start,
+                    ),
+                    if (article['description'] != null &&
+                        (article['description'] as String).isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        article['description'] ?? '',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        textAlign: TextAlign.start,
                       ),
-                    )),
-              const Spacer(),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 4),
               IconButton(
                 visualDensity: VisualDensity.compact,
                 padding: const EdgeInsets.all(8),
@@ -1037,7 +1128,10 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
                 onPressed: () async {
                   try {
                     await favoritesService.toggleArticleFavorite(articleId);
-                    article['is_favorited'] = favoritesService.isArticleFavorite(articleId);
+                    setState(() {
+                      article['is_favorited'] =
+                          favoritesService.isArticleFavorite(articleId);
+                    });
                   } catch (e) {
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -1050,12 +1144,42 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
                   }
                 },
               ),
-              const SizedBox(width: 4),
-              Text(_formatDate(article['created_at']),
-                  style: TextStyle(
-                      fontSize: 11, color: theme.colorScheme.onSurfaceVariant)),
             ],
           ),
+          if (hasTags || hasAttachments) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                if (hasTags)
+                  ...(article['tags'] as List).take(2).map<Widget>((tag) => Padding(
+                        padding: const EdgeInsets.only(right: AppSpacing.sm),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(tag['name'] ?? '',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: theme.colorScheme.primary,
+                                  fontWeight: FontWeight.w600)),
+                        ),
+                      )),
+                const Spacer(),
+                if (hasAttachments)
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.2),
+                        shape: BoxShape.circle),
+                    child: Icon(Icons.attach_file,
+                        size: 14, color: theme.colorScheme.primary),
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -1080,11 +1204,12 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
         ),
       );
     }
-    return ListView.separated(
-      cacheExtent: 250, controller: _faqScrollController,
-      padding: const EdgeInsets.all(AppSpacing.base),
+    return ListView.builder(
+      cacheExtent: 250,
+      controller: _faqScrollController,
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       itemCount: _faqEntries.length + (_hasMoreFaq ? 1 : 0),
-      separatorBuilder: (context, index) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         if (index == _faqEntries.length) {
           if (_faqError) {
@@ -1132,55 +1257,91 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
         faqId,
         fallback: faq['is_favorited'] as bool?,
       );
+      final question = faq['question']?.toString() ?? '';
+      final answer = faq['answer']?.toString() ?? '';
+
       return AnimatedCard(
-       index: index,
-       child: ExpansionTile(
-         title: Row(
-           children: [
-             Expanded(
-               child: Text(faq['question'],
-                   style: theme.textTheme.titleSmall
-                       ?.copyWith(fontWeight: FontWeight.w600)),
-             ),
-           ],
-         ),
-         trailing: IconButton(
-           visualDensity: VisualDensity.compact,
-           icon: Icon(
-             isFav ? Icons.star : Icons.star_border,
-             color: isFav
-                 ? Colors.amber
-                 : theme.colorScheme.onSurfaceVariant,
-             size: 22,
-           ),
-           onPressed: () async {
-             try {
-               await favoritesService.toggleFaqFavorite(faqId);
-               faq['is_favorited'] = favoritesService.isFaqFavorite(faqId);
-             } catch (e) {
-               if (mounted) {
-                 ScaffoldMessenger.of(context).showSnackBar(
-                   const SnackBar(
-                     content: Text('Не удалось обновить избранное'),
-                     duration: Duration(seconds: 2),
-                   ),
-                 );
-               }
-             }
-           },
-         ),
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(AppSpacing.base),
-            child: Text(faq['answer'],
-                style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant, height: 1.5),
-                textAlign: TextAlign.start),
-          ),
-        ],
-      ),
-    );
-  }
+        index: index,
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        onTap: () => _showFaqDetail(faq),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: [
+                      theme.colorScheme.primary,
+                      theme.colorScheme.secondary,
+                    ]),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.help_outline, color: Colors.white, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        question,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (answer.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          answer,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.all(8),
+                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                  icon: Icon(
+                    isFav ? Icons.star : Icons.star_border,
+                    color: isFav ? Colors.amber : theme.colorScheme.onSurfaceVariant,
+                    size: 22,
+                  ),
+                  onPressed: () async {
+                    try {
+                      await favoritesService.toggleFaqFavorite(faqId);
+                      setState(() {
+                        faq['is_favorited'] = favoritesService.isFaqFavorite(faqId);
+                      });
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Не удалось обновить избранное'),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
 
   Future<void> _openDownloadedAttachment(String fileName) async {
     final localPath = await FileSaveHelper.getLocalFilePath(fileName);
@@ -1360,122 +1521,171 @@ void _showArticleDetail(int articleId) async {
        await showModalBottomSheet(
         context: context,
         isScrollControlled: true,
+        enableDrag: false,
+        isDismissible: true,
         backgroundColor: Colors.transparent,
         builder: (context) => StatefulBuilder(
-          builder: (context, setModalState) => Container(
-            height: MediaQuery.of(context).size.height * 0.75,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(32)),
-            ),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                          width: 40,
-                          height: 4,
-                           margin: const EdgeInsets.only(right: AppSpacing.base),
-                          decoration: BoxDecoration(
-                              color: theme.colorScheme.outline,
-                              borderRadius: BorderRadius.circular(2))),
-                    ],
-                  ),
-                   const SizedBox(height: 12),
-                   Row(
-                    children: [
-                      Expanded(
-                        child: Text(article['title'],
-                            style: theme.textTheme.headlineSmall
-                                ?.copyWith(fontWeight: FontWeight.bold)),
-                      ),
-                       IconButton(
-                         visualDensity: VisualDensity.compact,
-                         icon: Icon(
-                           favoritesService.isArticleFavorite(
-                             articleId,
-                             fallback: article['is_favorited'] as bool?,
-                           )
-                               ? Icons.star
-                               : Icons.star_border,
-                           color: favoritesService.isArticleFavorite(
-                             articleId,
-                             fallback: article['is_favorited'] as bool?,
-                           )
-                               ? Colors.amber
-                               : theme.colorScheme.onSurfaceVariant,
-                           size: 24,
-                         ),
-                         onPressed: () async {
-                           try {
-                             await favoritesService.toggleArticleFavorite(articleId);
-                             article['is_favorited'] = favoritesService.isArticleFavorite(articleId);
-                             setModalState(() {});
-                           } catch (e) {
-                             if (context.mounted) {
-                               ScaffoldMessenger.of(context).showSnackBar(
-                                 const SnackBar(
-                                   content: Text('Не удалось обновить избранное'),
-                                   duration: Duration(seconds: 2),
-                                 ),
-                               );
-                             }
-                           }
-                         },
-                       ),
-                    ],
-                  ),
-                   const SizedBox(height: AppSpacing.base),
-Text(article['description'] ?? '',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                            height: 1.6),
-                        textAlign: TextAlign.start),
-if (article['attachments'] != null &&
-                        article['attachments'].isNotEmpty) ...[
-                      const SizedBox(height: AppSpacing.xl),
-                      Text('Вложения:', style: theme.textTheme.titleSmall),
-                       ...article['attachments'].map<Widget>((att) {
-                         final attId = att['id'];
-                         final fileUrl = att['file_url'] ?? att['url'];
-                         final fileName = FileSaveHelper.ensureExtension(att['title'] ?? 'Вложение', fileUrl);
-                         final isDownloaded = _downloadedAttachmentNames.contains(fileName);
-                         final isDownloading = _downloadingAttachmentIds.contains(attId);
-                         return ListTile(
-                           title: Text(att['title']),
-trailing: isDownloading
-                                ? const SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                : isDownloaded && !kIsWeb
-                                    ? OutlinedButton.icon(
-                                        icon: const Icon(Icons.visibility, size: 16),
-                                        label: const Text('Просмотр'),
-                                        style: OutlinedButton.styleFrom(
-                                          foregroundColor: theme.colorScheme.primary,
-                                          side: BorderSide(color: theme.colorScheme.primary),
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                        ),
-                                        onPressed: () => _openDownloadedAttachment(fileName),
-                                      )
-                                    : ElevatedButton(
-                                        onPressed: () => _downloadAttachment(articleId, att),
-                                        child: const Text('Скачать'),
-                                      ),
-                         );
-                       }),
-                    ],
-                   const SizedBox(height: 24),
-                 ],
+          builder: (context, setModalState) {
+            double dragDistance = 0;
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.85,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
               ),
-            ),
-          ),
+              child: Column(
+                children: [
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onVerticalDragStart: (_) => dragDistance = 0,
+                    onVerticalDragUpdate: (details) {
+                      dragDistance += details.primaryDelta ?? 0;
+                    },
+                    onVerticalDragEnd: (details) {
+                      if ((details.primaryVelocity != null && details.primaryVelocity! > 100) || dragDistance > 50) {
+                        Navigator.of(context).pop();
+                      }
+                    },
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.only(top: 14, bottom: 10),
+                          color: Colors.transparent,
+                          child: Center(
+                            child: Container(
+                              width: 44,
+                              height: 5,
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.outline.withValues(alpha: 0.5),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  article['title'] ?? '',
+                                  style: theme.textTheme.headlineSmall
+                                      ?.copyWith(fontWeight: FontWeight.bold),
+                                  textAlign: TextAlign.start,
+                                ),
+                              ),
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                icon: Icon(
+                                  favoritesService.isArticleFavorite(
+                                    articleId,
+                                    fallback: article['is_favorited'] as bool?,
+                                  )
+                                      ? Icons.star
+                                      : Icons.star_border,
+                                  color: favoritesService.isArticleFavorite(
+                                    articleId,
+                                    fallback: article['is_favorited'] as bool?,
+                                  )
+                                      ? Colors.amber
+                                      : theme.colorScheme.onSurfaceVariant,
+                                  size: 24,
+                                ),
+                                onPressed: () async {
+                                  try {
+                                    await favoritesService.toggleArticleFavorite(articleId);
+                                    article['is_favorited'] = favoritesService.isArticleFavorite(articleId);
+                                    setModalState(() {});
+                                    if (mounted) setState(() {});
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Не удалось обновить избранное'),
+                                          duration: Duration(seconds: 2),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                              ),
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                icon: const Icon(Icons.close),
+                                onPressed: () => Navigator.of(context).pop(),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SelectableText(
+                            article['description'] ?? '',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                              height: 1.6,
+                            ),
+                            textAlign: TextAlign.start,
+                          ),
+                          if (article['attachments'] != null &&
+                              article['attachments'].isNotEmpty) ...[
+                            const SizedBox(height: AppSpacing.xl),
+                            Text('Вложения:', style: theme.textTheme.titleSmall),
+                            ...article['attachments'].map<Widget>((att) {
+                              final attId = att['id'];
+                              final fileUrl = att['file_url'] ?? att['url'];
+                              final fileName = FileSaveHelper.ensureExtension(att['title'] ?? 'Вложение', fileUrl);
+                              final isDownloaded = _downloadedAttachmentNames.contains(fileName);
+                              final isDownloading = _downloadingAttachmentIds.contains(attId);
+                              return Material(
+                                color: theme.colorScheme.surface,
+                                child: ListTile(
+                                  title: Text(att['title']),
+                                  trailing: isDownloading
+                                      ? const SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                        )
+                                      : isDownloaded && !kIsWeb
+                                          ? OutlinedButton.icon(
+                                              icon: const Icon(Icons.visibility, size: 16),
+                                              label: const Text('Просмотр'),
+                                              style: OutlinedButton.styleFrom(
+                                                foregroundColor: theme.colorScheme.primary,
+                                                side: BorderSide(color: theme.colorScheme.primary),
+                                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                              ),
+                                              onPressed: () => _openDownloadedAttachment(fileName),
+                                            )
+                                          : ElevatedButton(
+                                              onPressed: () => _downloadAttachment(articleId, att),
+                                              child: const Text('Скачать'),
+                                            ),
+                                ),
+                              );
+                            }),
+                          ],
+                          const SizedBox(height: 24),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
       );
     } catch (e) {
@@ -1488,6 +1698,148 @@ trailing: isDownloading
     }
   }
 
+  void _showFaqDetail(Map<String, dynamic> faq) async {
+    final theme = Theme.of(context);
+    final int faqId = (faq['id'] is num)
+        ? (faq['id'] as num).toInt()
+        : (int.tryParse(faq['id']?.toString() ?? '') ?? 0);
+    final question = faq['question']?.toString() ?? '';
+    final answer = faq['answer']?.toString() ?? '';
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      enableDrag: false,
+      isDismissible: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          double dragDistance = 0;
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.75,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+            ),
+            child: Column(
+              children: [
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onVerticalDragStart: (_) => dragDistance = 0,
+                  onVerticalDragUpdate: (details) {
+                    dragDistance += details.primaryDelta ?? 0;
+                  },
+                  onVerticalDragEnd: (details) {
+                    if ((details.primaryVelocity != null && details.primaryVelocity! > 100) || dragDistance > 50) {
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.only(top: 14, bottom: 10),
+                        color: Colors.transparent,
+                        child: Center(
+                          child: Container(
+                            width: 44,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.outline.withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                question,
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              icon: Icon(
+                                favoritesService.isFaqFavorite(
+                                  faqId,
+                                  fallback: faq['is_favorited'] as bool?,
+                                )
+                                    ? Icons.star
+                                    : Icons.star_border,
+                                color: favoritesService.isFaqFavorite(
+                                  faqId,
+                                  fallback: faq['is_favorited'] as bool?,
+                                )
+                                    ? Colors.amber
+                                    : theme.colorScheme.onSurfaceVariant,
+                                size: 24,
+                              ),
+                              onPressed: () async {
+                                try {
+                                  await favoritesService.toggleFaqFavorite(faqId);
+                                  faq['is_favorited'] = favoritesService.isFaqFavorite(faqId);
+                                  setModalState(() {});
+                                  if (mounted) setState(() {});
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Не удалось обновить избранное'),
+                                        duration: Duration(seconds: 2),
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+                            ),
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              icon: const Icon(Icons.close),
+                              onPressed: () => Navigator.of(context).pop(),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SelectableText(
+                          answer,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            height: 1.6,
+                          ),
+                          textAlign: TextAlign.start,
+                        ),
+                        const SizedBox(height: 24),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // ignore: unused_element
   String _formatDate(String? iso) {
     if (iso == null) return '';
     try {
@@ -1528,4 +1880,3 @@ class CategoryNode {
     required this.children,
   });
 }
-

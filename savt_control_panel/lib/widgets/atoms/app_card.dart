@@ -25,6 +25,7 @@ class AppCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isLight = theme.brightness == Brightness.light;
+    final radius = borderRadius ?? BorderRadius.circular(20);
 
     return GestureDetector(
       onTap: onTap,
@@ -34,8 +35,7 @@ class AppCard extends StatelessWidget {
         padding: padding,
         decoration: BoxDecoration(
           color: color ?? (isLight ? AppColors.lightCard : AppColors.darkCard),
-          borderRadius: borderRadius ??
-              BorderRadius.circular(20),
+          borderRadius: radius,
           boxShadow: customShadows ??
               [
                 BoxShadow(
@@ -47,7 +47,11 @@ class AppCard extends StatelessWidget {
                 ),
               ],
         ),
-        child: child,
+        child: Material(
+          type: MaterialType.transparency,
+          borderRadius: radius,
+          child: child,
+        ),
       ),
     );
   }

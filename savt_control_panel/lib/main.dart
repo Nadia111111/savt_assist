@@ -501,6 +501,13 @@ class _ControlPanelAppState extends State<ControlPanelApp> {
             borderRadius: BorderRadius.all(Radius.circular(24))),
       ),
       dividerTheme: const DividerThemeData(color: outline, space: 1),
+      popupMenuTheme: const PopupMenuThemeData(
+        color: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 6,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(16))),
+      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: const Color(0xFFF1F5F9),
@@ -626,6 +633,13 @@ class _ControlPanelAppState extends State<ControlPanelApp> {
             borderRadius: BorderRadius.all(Radius.circular(24))),
       ),
       dividerTheme: const DividerThemeData(color: outline, space: 1),
+      popupMenuTheme: const PopupMenuThemeData(
+        color: Color(0xFF1A2332),
+        surfaceTintColor: Colors.transparent,
+        elevation: 6,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(16))),
+      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: const Color(0xFF151F2E),

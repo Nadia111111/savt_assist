@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:flutter/foundation.dart';
 import 'api_client.dart';
 
 class UploadService {
@@ -9,7 +10,8 @@ class UploadService {
 
   UploadService(this._apiClient);
 
-  /// Загрузить файл (изображение, документ, видео)
+  /// Загрузить файл (изображение, документ, видео).
+  /// Сервер возвращает подписанную ссылку, которую необходимо передавать без изменений.
   Future<String> uploadAttachment(String filePath, {bool compress = true}) async {
     try {
       String targetPath = filePath;
@@ -31,7 +33,7 @@ class UploadService {
             targetPath = result.path;
           }
         } catch (e) {
-          print('Ошибка сжатия изображения: $e');
+          debugPrint('Ошибка сжатия изображения: $e');
         }
       }
 
@@ -45,14 +47,20 @@ class UploadService {
         data: formData,
         options: Options(headers: {'Content-Type': 'multipart/form-data'}),
       );
-      // Ожидаемый ответ { "file_url": "/static/attachments/abc.jpg" } или { "url": "..." }
-      return (response.data['file_url'] ?? response.data['url'] ?? '').toString();
+      // Возвращаем ссылку ровно так, как её выдал сервер (с подписью)
+      final raw = response.data;
+      if (raw is Map) {
+        final url = raw['url'] ?? raw['file_url'];
+        if (url != null) return url.toString();
+      }
+      return raw?.toString() ?? '';
     } on DioException catch (e) {
       throw _handleError(e);
     }
   }
 
-  /// Загрузить голосовое сообщение
+  /// Загрузить голосовое сообщение.
+  /// Сервер возвращает подписанную ссылку, которую необходимо передавать без изменений.
   Future<String> uploadVoice(String filePath) async {
     try {
       final fileName = filePath.split('/').last;
@@ -65,7 +73,13 @@ class UploadService {
         data: formData,
         options: Options(headers: {'Content-Type': 'multipart/form-data'}),
       );
-      return response.data['url'];
+      // Возвращаем ссылку ровно так, как её выдал сервер (с подписью)
+      final raw = response.data;
+      if (raw is Map) {
+        final url = raw['url'] ?? raw['file_url'];
+        if (url != null) return url.toString();
+      }
+      return raw?.toString() ?? '';
     } on DioException catch (e) {
       throw _handleError(e);
     }

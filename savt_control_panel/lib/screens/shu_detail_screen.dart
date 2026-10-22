@@ -47,6 +47,7 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
     _loadDetail();
     _loadTelemetry();
     userEventsService.onTelemetryCreated = _onTelemetryCreated;
+    userEventsService.onTelemetryAccessRevoked = _onTelemetryAccessRevoked;
     userEventsService.startTelemetry(int.parse(widget.shuId));
     _tabController.addListener(() {
       if (_tabController.index == 2 && !_tabController.indexIsChanging) {
@@ -532,11 +533,24 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
     }
   }
 
+  void _onTelemetryAccessRevoked(int cabinetId) {
+    if (mounted && int.tryParse(widget.shuId) == cabinetId) {
+      setState(() => _hasTelemetryAccess = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Права доступа к телеметрии шкафа были отозваны'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _tabController.dispose();
     userEventsService.stopTelemetry();
     userEventsService.onTelemetryCreated = null;
+    userEventsService.onTelemetryAccessRevoked = null;
     super.dispose();
   }
 

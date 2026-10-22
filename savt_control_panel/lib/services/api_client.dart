@@ -24,9 +24,9 @@ class ApiClient {
   ApiClient(this._tokenStorage)
       : _dio = Dio(BaseOptions(
           baseUrl: baseUrl,
-          connectTimeout: const Duration(seconds: 10),
-          receiveTimeout: const Duration(seconds: 20),
-          sendTimeout: const Duration(seconds: 10),
+          connectTimeout: const Duration(seconds: 25),
+          receiveTimeout: const Duration(seconds: 30),
+          sendTimeout: const Duration(seconds: 25),
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
@@ -98,10 +98,10 @@ class ApiClient {
         if (error.response?.statusCode == 401) {
           final path = error.requestOptions.path;
           final isAuthEndpoint = path.contains('/auth/login') ||
-                                 path.contains('/auth/register/start') ||
-                                 path.contains('/auth/register/complete') ||
-                                 path.contains('/auth/admin-login') ||
-                                 path.contains('/auth/guest');
+              path.contains('/auth/register/start') ||
+              path.contains('/auth/register/complete') ||
+              path.contains('/auth/admin-login') ||
+              path.contains('/auth/guest');
 
           if (isAuthEndpoint || path.contains('/auth/refresh')) {
             await _tokenStorage.clearTokens();
@@ -183,7 +183,8 @@ class ApiClient {
   void _redirectToAuth() {
     try {
       final now = DateTime.now();
-      if (_lastAuthRedirect == null || now.difference(_lastAuthRedirect!).inSeconds > 2) {
+      if (_lastAuthRedirect == null ||
+          now.difference(_lastAuthRedirect!).inSeconds > 2) {
         _lastAuthRedirect = now;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           final navigator = ControlPanelApp.navigatorKey.currentState;
