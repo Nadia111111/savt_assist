@@ -387,6 +387,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
+        constraints: const BoxConstraints(maxWidth: 600),
         builder: (context) => StatefulBuilder(
           builder: (context, setModalState) => Container(
             height: MediaQuery.of(context).size.height * 0.7,

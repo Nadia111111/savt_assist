@@ -673,6 +673,7 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
       isScrollControlled: true,
       enableDrag: false,
       backgroundColor: Colors.transparent,
+      constraints: const BoxConstraints(maxWidth: 600),
       builder: (context) {
         double dragDistance = 0;
         return Container(
@@ -855,6 +856,7 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
       isScrollControlled: true,
       enableDrag: false,
       backgroundColor: Colors.transparent,
+      constraints: const BoxConstraints(maxWidth: 600),
       builder: (context) {
         double dragDistance = 0;
         return Container(
@@ -1524,6 +1526,7 @@ void _showArticleDetail(int articleId) async {
         enableDrag: false,
         isDismissible: true,
         backgroundColor: Colors.transparent,
+        constraints: const BoxConstraints(maxWidth: 600),
         builder: (context) => StatefulBuilder(
           builder: (context, setModalState) {
             double dragDistance = 0;
@@ -1712,6 +1715,7 @@ void _showArticleDetail(int articleId) async {
       enableDrag: false,
       isDismissible: true,
       backgroundColor: Colors.transparent,
+      constraints: const BoxConstraints(maxWidth: 600),
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
           double dragDistance = 0;
