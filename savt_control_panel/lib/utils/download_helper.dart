@@ -1,6 +1,7 @@
 // lib/utils/download_helper.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
+export '../services/download_manager.dart';
 
 Future<void> showDownloadProgressDialog(
   BuildContext context,

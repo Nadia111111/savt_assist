@@ -1,7 +1,6 @@
 // lib/screens/requests_hub_screen.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../theme/app_spacing.dart';
 import '../theme/app_colors.dart';
 import '../models/reclamations.dart';
 import '../widgets/gradient_scaffold.dart';
@@ -9,6 +8,7 @@ import '../widgets/skeletons.dart';
 import '../widgets/animated_card.dart';
 import '../widgets/responsive_layout.dart';
 import '../widgets/keep_alive_wrapper.dart';
+import '../widgets/draggable_floating_pill_overlay.dart';
 import '../main.dart'; // serviceRequestService, reclamationsService
 import 'service_request_screen.dart';
 import 'service_request_detail_screen.dart';
@@ -27,7 +27,7 @@ class _RequestsHubScreenState extends State<RequestsHubScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
-  final FocusNode _searchFocusNode = FocusNode();
+  final FocusNode _searchFocusNode = FocusNode(canRequestFocus: false);
   bool _isSearchExpanded = false;
   String _searchQuery = '';
   Timer? _searchDebounce;
@@ -177,39 +177,85 @@ class _RequestsHubScreenState extends State<RequestsHubScreen>
     return GradientScaffold(
       appBarTitle: 'Заявки',
       appBarAction: IconButton(
-        icon: Icon(_isSearchExpanded ? Icons.close : Icons.search, color: Colors.white),
+        icon: Icon(_isSearchExpanded ? Icons.close : Icons.search,
+            color: Colors.white),
         tooltip: _isSearchExpanded ? 'Закрыть поиск' : 'Поиск',
         onPressed: () {
-          setState(() {
-            _isSearchExpanded = !_isSearchExpanded;
-            if (!_isSearchExpanded) {
+          if (_isSearchExpanded) {
+            _searchFocusNode.canRequestFocus = false;
+            _searchFocusNode.unfocus(
+                disposition: UnfocusDisposition.previouslyFocusedChild);
+            FocusManager.instance.primaryFocus?.unfocus();
+            setState(() {
+              _isSearchExpanded = false;
               _searchQuery = '';
               _searchController.clear();
-            }
-          });
-          if (_isSearchExpanded) {
-            Future.delayed(const Duration(milliseconds: 100), () {
-              if (mounted) {
-                FocusScope.of(this.context).requestFocus(_searchFocusNode);
-              }
             });
           } else {
-            FocusScope.of(context).unfocus();
+            _searchFocusNode.canRequestFocus = true;
+            setState(() {
+              _isSearchExpanded = true;
+            });
+            Future.delayed(const Duration(milliseconds: 150), () {
+              if (mounted && _isSearchExpanded) {
+                _searchFocusNode.requestFocus();
+              }
+            });
           }
         },
       ),
-      body: ResponsiveContainer(
-        maxWidth: 600,
-        child: Column(
+      body: DraggableFloatingPillOverlay(
+        storageKey: 'fab_pos_new_request',
+        heroTag: 'hero_requests_fab',
+        icon: Icons.add,
+        label: isServiceTab ? 'Новая заявка' : 'Подать рекламацию',
+        estimatedWidth: isServiceTab ? 162.0 : 196.0,
+        onTap: () async {
+          if (isServiceTab) {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ServiceRequestScreen()),
+            );
+            if (mounted) _loadServiceRequests();
+          } else {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const CreateReclamationScreen()),
+            );
+            if (mounted) _loadReclamations();
+          }
+        },
+        child: ResponsiveContainer(
+          maxWidth: 600,
+          child: Column(
           children: [
             // Разворачиваемый поиск
             AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeInOut,
-              padding: _isSearchExpanded
-                  ? const EdgeInsets.fromLTRB(AppSpacing.base, AppSpacing.md, AppSpacing.base, AppSpacing.xs)
-                  : EdgeInsets.zero,
-              child: _isSearchExpanded ? _buildSearchField(theme) : const SizedBox.shrink(),
+              duration: const Duration(milliseconds: 320),
+              curve: Curves.easeInOutCubic,
+              height: _isSearchExpanded ? 68 : 0,
+              padding: EdgeInsets.symmetric(
+                horizontal: _isSearchExpanded ? 16 : 0,
+                vertical: _isSearchExpanded ? 6 : 0,
+              ),
+              child: ClipRect(
+                child: OverflowBox(
+                  minHeight: 0,
+                  maxHeight: 68,
+                  alignment: Alignment.topCenter,
+                  child: AnimatedOpacity(
+                    opacity: _isSearchExpanded ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 220),
+                    child: ExcludeFocus(
+                      excluding: !_isSearchExpanded,
+                      child: IgnorePointer(
+                        ignoring: !_isSearchExpanded,
+                        child: _buildSearchField(theme),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
 
             // Таб-переключатель в стиле Базы Знаний
@@ -252,31 +298,8 @@ class _RequestsHubScreenState extends State<RequestsHubScreen>
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: isServiceTab ? 'requests_hub_service_fab' : 'requests_hub_reclamation_fab',
-        onPressed: () async {
-          if (isServiceTab) {
-            await Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const ServiceRequestScreen()),
-            );
-            if (mounted) _loadServiceRequests();
-          } else {
-            await Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const CreateReclamationScreen()),
-            );
-            if (mounted) _loadReclamations();
-          }
-        },
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add, size: 20),
-        label: Text(
-          isServiceTab ? 'Новая заявка' : 'Подать рекламацию',
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-      ),
+    ),
+      floatingActionButton: null,
     );
   }
 
@@ -289,6 +312,7 @@ class _RequestsHubScreenState extends State<RequestsHubScreen>
       child: TextField(
         controller: _searchController,
         focusNode: _searchFocusNode,
+        enabled: _isSearchExpanded,
         onChanged: (val) {
           _searchDebounce?.cancel();
           _searchDebounce = Timer(const Duration(milliseconds: 300), () {
@@ -297,9 +321,23 @@ class _RequestsHubScreenState extends State<RequestsHubScreen>
         },
         decoration: InputDecoration(
           hintText: 'Поиск по номеру ШУ или описанию...',
-          prefixIcon: Icon(Icons.search, color: theme.colorScheme.onSurfaceVariant, size: 22),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          prefixIcon: Icon(Icons.search,
+              color: theme.colorScheme.onSurfaceVariant, size: 24),
+          filled: true,
+          fillColor: theme.colorScheme.surfaceContainerHighest,
+          border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none),
+          enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide:
+                BorderSide(color: theme.colorScheme.primary, width: 1.5),
+          ),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         ),
       ),
     );

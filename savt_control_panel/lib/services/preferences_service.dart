@@ -1,8 +1,12 @@
 // lib/services/preferences_service.dart
+import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class PreferencesService {
   static late SharedPreferences _prefs;
+  static final ValueNotifier<int> fabPositionNotifier = ValueNotifier<int>(0);
+  static String? lastUpdatedFabKey;
 
   static Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
@@ -47,4 +51,21 @@ class PreferencesService {
 
   static String? getThemeModeString() => _prefs.getString('theme_mode');
   static Future<void> saveThemeModeString(String mode) => _prefs.setString('theme_mode', mode);
+
+  // Floating Action Button normalized positions (0.0 to 1.0)
+  static Offset? getFabNormalizedPosition(String key) {
+    final x = _prefs.getDouble('${key}_norm_x');
+    final y = _prefs.getDouble('${key}_norm_y');
+    if (x != null && y != null) {
+      return Offset(x, y);
+    }
+    return null;
+  }
+
+  static Future<void> saveFabNormalizedPosition(String key, double normX, double normY) async {
+    await _prefs.setDouble('${key}_norm_x', normX);
+    await _prefs.setDouble('${key}_norm_y', normY);
+    lastUpdatedFabKey = key;
+    fabPositionNotifier.value++;
+  }
 }

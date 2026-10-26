@@ -66,6 +66,18 @@ class ProjectDetails {
     required this.cabinets,
   });
 
+  ProjectDetails copyWith({
+    int? projectId,
+    String? name,
+    List<ProjectCabinetInfo>? cabinets,
+  }) {
+    return ProjectDetails(
+      projectId: projectId ?? this.projectId,
+      name: name ?? this.name,
+      cabinets: cabinets ?? this.cabinets,
+    );
+  }
+
   factory ProjectDetails.fromJson(Map<String, dynamic> json) {
     final id = json['project_id'] ?? json['id'];
     final cabsList = json['cabinets'] as List<dynamic>? ?? [];
@@ -91,6 +103,22 @@ class ProjectCabinetInfo {
     this.adminInternalName,
     this.isPinned = false,
   });
+
+  ProjectCabinetInfo copyWith({
+    int? id,
+    String? type,
+    String? objectNumber,
+    String? adminInternalName,
+    bool? isPinned,
+  }) {
+    return ProjectCabinetInfo(
+      id: id ?? this.id,
+      type: type ?? this.type,
+      objectNumber: objectNumber ?? this.objectNumber,
+      adminInternalName: adminInternalName ?? this.adminInternalName,
+      isPinned: isPinned ?? this.isPinned,
+    );
+  }
 
   factory ProjectCabinetInfo.fromJson(Map<String, dynamic> json) {
     final cabId = json['id'] ?? json['cabinet_id'];

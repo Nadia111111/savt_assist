@@ -36,6 +36,7 @@ import 'screens/create_reclamation_screen.dart';
 import 'screens/reclamation_detail_screen.dart';
 import 'screens/requests_hub_screen.dart';
 import 'widgets/connection_notification_wrapper.dart';
+import 'services/download_manager.dart';
 import 'services/app_theme.dart';
 import 'services/preferences_service.dart';
 import 'services/token_storage.dart';
@@ -738,7 +739,9 @@ class _ControlPanelAppState extends State<ControlPanelApp> {
                 FocusManager.instance.primaryFocus?.unfocus();
               },
               child: ConnectionNotificationWrapper(
-                child: child!,
+                child: DownloadOverlayWrapper(
+                  child: child!,
+                ),
               ),
             );
           },

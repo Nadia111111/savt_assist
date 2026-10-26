@@ -13,6 +13,7 @@ import 'navigation_container.dart';
 import '../main.dart';
 import '../services/network_service.dart';
 import '../widgets/responsive_layout.dart';
+import '../widgets/draggable_floating_pill_overlay.dart';
 
 class ShuListScreen extends StatefulWidget {
   final bool isTab;
@@ -22,11 +23,13 @@ class ShuListScreen extends StatefulWidget {
   State<ShuListScreen> createState() => ShuListScreenState();
 }
 
-class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserver {
+class ShuListScreenState extends State<ShuListScreen>
+    with WidgetsBindingObserver {
   final int _currentIndex = 0;
   String _searchQuery = '';
   bool _isSearchExpanded = false;
-  final FocusNode _searchFocusNode = FocusNode();
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode(canRequestFocus: false);
 
   List<Cabinet> _cabinets = [];
   List<Project> _projects = [];
@@ -35,20 +38,25 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
   bool _isOnline = true;
 
   bool _isSelectionMode = false;
-  final Set<int> _selectedCabinetIds = {};
   final Set<int> _selectedProjectIds = {};
+  final Set<int> _selectedCabinetIds = {};
   final ScrollController _scrollController = ScrollController();
   Timer? _refreshTimer;
 
   void resetState() {
     print('🔵 [ShuListScreen] resetState called');
+    _searchController.clear();
+    _searchFocusNode.canRequestFocus = false;
+    _searchFocusNode.unfocus(
+        disposition: UnfocusDisposition.previouslyFocusedChild);
+    FocusManager.instance.primaryFocus?.unfocus();
     if (mounted) {
       setState(() {
         _isSearchExpanded = false;
         _searchQuery = '';
         _isSelectionMode = false;
-        _selectedCabinetIds.clear();
         _selectedProjectIds.clear();
+        _selectedCabinetIds.clear();
       });
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -123,7 +131,8 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
     await _loadCabinets(forceRefresh: true);
   }
 
-  Future<void> _loadCabinets({bool forceRefresh = false, bool showLoading = true}) async {
+  Future<void> _loadCabinets(
+      {bool forceRefresh = false, bool showLoading = true}) async {
     final token = await tokenStorage.getAccessToken();
     if (token == null || token.isEmpty) {
       if (mounted) {
@@ -169,7 +178,7 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
         if (_cabinets.isNotEmpty || _projects.isNotEmpty) {
           setState(() {
             _isLoading = false;
-            });
+          });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Не удалось обновить данные: $e'),
@@ -181,12 +190,12 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
           setState(() {
             _error = 'Нет подключения к интернету. Данные не загружены ранее.';
             _isLoading = false;
-            });
+          });
         } else {
           setState(() {
             _error = e.toString();
             _isLoading = false;
-            });
+          });
         }
       }
     }
@@ -195,62 +204,38 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
   void _exitSelectionMode() {
     setState(() {
       _isSelectionMode = false;
-      _selectedCabinetIds.clear();
       _selectedProjectIds.clear();
+      _selectedCabinetIds.clear();
     });
   }
 
-  Future<void> _deleteSelected() async {
-    final toDeleteProjects = List<int>.from(_selectedProjectIds);
+  Future<void> _deleteSelectedCabinets() async {
     final toDeleteCabinets = List<int>.from(_selectedCabinetIds);
+    if (toDeleteCabinets.isEmpty) return;
 
-    final totalCount = toDeleteProjects.length + toDeleteCabinets.length;
-    if (totalCount == 0) return;
-
-    final standaloneCabIds = <int>[];
-    final projectCabIds = <int>[];
-    for (final id in toDeleteCabinets) {
-      final cab = _cabinets.firstWhere(
-        (c) => c.cabinetId == id,
-        orElse: () => Cabinet(
-          cabinetId: id,
-          type: '',
-          objectNumber: '',
-          customName: '',
-          unreadCount: 0,
-          warrantyStatus: '',
-        ),
-      );
-      if (cab.projectId == null || cab.projectId == 0) {
-        standaloneCabIds.add(id);
-      } else {
-        projectCabIds.add(id);
-      }
-    }
-
-    String message = 'Выбрано элементов: $totalCount.\n';
-    if (toDeleteCabinets.isNotEmpty) {
-      message += 'Чаты по выбранным ШУ уйдут в архив.\n';
-    }
-    if (projectCabIds.isNotEmpty) {
-      message +=
-          'Шкафы, входящие в проект (${projectCabIds.length} шт.), нельзя удалить отдельно — для них необходимо выйти из проекта.\n';
-    }
-    message += 'Вы уверены, что хотите продолжить?';
-
+    final isSingle = toDeleteCabinets.length == 1;
     final confirm = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('Удалить выбранное?'),
-            content: Text(message),
+            title: Text(isSingle ? 'Убрать шкаф?' : 'Убрать выбранные шкафы?'),
+            content: Text(
+              isSingle
+                  ? 'Вы уверены, что хотите убрать этот шкаф? Чаты по этому ШУ уйдут в архив.'
+                  : 'Вы уверены, что хотите убрать выбранные шкафы (${toDeleteCabinets.length} шт.)? Чаты уйдут в архив.',
+            ),
             actions: [
               TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Отмена')),
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child:
-                      const Text('Удалить', style: TextStyle(color: Colors.red))),
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Отмена'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Убрать'),
+              ),
             ],
           ),
         ) ??
@@ -259,14 +244,7 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
     if (confirm != true) return;
 
     bool hasError = false;
-    for (final id in toDeleteProjects) {
-      try {
-        await cabinetService.leaveProject(id);
-      } catch (e) {
-        hasError = true;
-      }
-    }
-    for (final id in standaloneCabIds) {
+    for (final id in toDeleteCabinets) {
       try {
         await cabinetService.deleteCabinet(id);
       } catch (e) {
@@ -280,12 +258,91 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
 
     if (!mounted) return;
     if (hasError) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Не удалось удалить некоторые элементы'),
-          backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Не удалось убрать некоторые шкафы'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Успешно удалено'), backgroundColor: Colors.green));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(isSingle
+              ? 'Шкаф успешно убран'
+              : 'Выбранные шкафы успешно убраны'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
+
+  Future<void> _leaveSelectedProjects() async {
+    final toLeaveProjects = List<int>.from(_selectedProjectIds);
+    if (toLeaveProjects.isEmpty) return;
+
+    final projectNames = _projects
+        .where((p) => toLeaveProjects.contains(p.projectId))
+        .map((p) => p.name)
+        .toList();
+    final isSingle = toLeaveProjects.length == 1;
+    final singleName = projectNames.isNotEmpty ? projectNames.first : '';
+
+    final confirm = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text(
+                isSingle ? 'Выйти из проекта?' : 'Выйти из выбранных проектов?'),
+            content: Text(
+              isSingle
+                  ? 'Вы потеряете доступ ко всем шкафам проекта "$singleName". Чаты по проекту уйдут в архив.'
+                  : 'Вы потеряете доступ ко всем шкафам выбранных проектов (${toLeaveProjects.length} шт.). Чаты по проектам уйдут в архив.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Отмена'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Выйти', style: TextStyle(color: Colors.red)),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (confirm != true) return;
+
+    bool hasError = false;
+    for (final id in toLeaveProjects) {
+      try {
+        await cabinetService.leaveProject(id);
+      } catch (e) {
+        hasError = true;
+      }
+    }
+
+    _exitSelectionMode();
+    MainNavigationContainer.globalKey.currentState?.refreshChatsList();
+    await _loadCabinets(forceRefresh: true, showLoading: false);
+
+    if (!mounted) return;
+    if (hasError) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Не удалось выйти из некоторых проектов'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(isSingle
+              ? 'Вы вышли из проекта "$singleName"'
+              : 'Вы успешно вышли из выбранных проектов'),
+          backgroundColor: Colors.green,
+        ),
+      );
     }
   }
 
@@ -371,16 +428,67 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
       if (hasError) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Не удалось изменить закрепление для некоторых элементов'),
+            content:
+                Text('Не удалось изменить закрепление для некоторых элементов'),
             backgroundColor: Colors.red,
           ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-                shouldPin ? 'Элементы закреплены' : 'Элементы откреплены'),
+            content:
+                Text(shouldPin ? 'Элементы закреплены' : 'Элементы откреплены'),
             backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _togglePinCabinet(Cabinet cabinet) async {
+    final newPinned = !cabinet.isPinned;
+    final cabId = cabinet.cabinetId;
+
+    setState(() {
+      _cabinets = _cabinets.map((c) {
+        if (c.cabinetId == cabId) {
+          return c.copyWith(isPinned: newPinned);
+        }
+        return c;
+      }).toList();
+    });
+
+    try {
+      if (newPinned) {
+        await cabinetService.pinCabinet(cabId);
+      } else {
+        await cabinetService.unpinCabinet(cabId);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(newPinned ? 'Шкаф закреплен' : 'Шкаф откреплен'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _cabinets = _cabinets.map((c) {
+            if (c.cabinetId == cabId) {
+              return c.copyWith(isPinned: !newPinned);
+            }
+            return c;
+          }).toList();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка изменения закрепления: $e'),
+            backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -437,6 +545,7 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
     if (userEventsService.onCabinetCreated == _onRemoteCabinetCreated) {
       userEventsService.onCabinetCreated = null;
     }
+    _searchController.dispose();
     _searchFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -496,11 +605,19 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
                     tooltip: 'Закрепить/открепить',
                     onPressed: _togglePinSelected,
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.white),
-                    tooltip: 'Удалить выбранные',
-                    onPressed: _deleteSelected,
-                  ),
+                  if (_selectedCabinetIds.isNotEmpty)
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline,
+                          color: Colors.white),
+                      tooltip: 'Убрать выбранные шкафы',
+                      onPressed: _deleteSelectedCabinets,
+                    ),
+                  if (_selectedProjectIds.isNotEmpty)
+                    IconButton(
+                      icon: const Icon(Icons.exit_to_app, color: Colors.white),
+                      tooltip: 'Выйти из проекта',
+                      onPressed: _leaveSelectedProjects,
+                    ),
                 ],
               ],
             )
@@ -508,33 +625,66 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
               icon: Icon(_isSearchExpanded ? Icons.close : Icons.search,
                   color: Colors.white),
               onPressed: () {
-                setState(() {
-                  _isSearchExpanded = !_isSearchExpanded;
-                  if (!_isSearchExpanded) _searchQuery = '';
-                });
                 if (_isSearchExpanded) {
-                  Future.delayed(const Duration(milliseconds: 100), () {
-                    if (mounted) {
-                      FocusScope.of(this.context).requestFocus(_searchFocusNode);
-                    }
+                  _searchFocusNode.canRequestFocus = false;
+                  _searchFocusNode.unfocus(
+                      disposition: UnfocusDisposition.previouslyFocusedChild);
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  setState(() {
+                    _isSearchExpanded = false;
+                    _searchQuery = '';
+                    _searchController.clear();
                   });
                 } else {
-                  FocusScope.of(context).unfocus();
+                  _searchFocusNode.canRequestFocus = true;
+                  setState(() {
+                    _isSearchExpanded = true;
+                  });
+                  Future.delayed(const Duration(milliseconds: 150), () {
+                    if (mounted && _isSearchExpanded) {
+                      _searchFocusNode.requestFocus();
+                    }
+                  });
                 }
               },
             ),
-      body: ResponsiveContainer(
-        maxWidth: 600,
-        child: Column(
+      body: DraggableFloatingPillOverlay(
+        storageKey: 'fab_pos_requests',
+        heroTag: 'hero_requests_fab',
+        icon: Icons.assignment_outlined,
+        label: 'Заявки',
+        estimatedWidth: 116.0,
+        isVisible: !_isSelectionMode,
+        onTap: () => Navigator.pushNamed(context, '/requests-hub'),
+        child: ResponsiveContainer(
+          maxWidth: 600,
+          child: Column(
           children: [
             AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOut,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Column(
-                children: [
-                  if (_isSearchExpanded) _buildSearchField(),
-                ],
+              duration: const Duration(milliseconds: 320),
+              curve: Curves.easeInOutCubic,
+              height: _isSearchExpanded ? 68 : 0,
+              padding: EdgeInsets.symmetric(
+                horizontal: _isSearchExpanded ? 16 : 0,
+                vertical: _isSearchExpanded ? 6 : 0,
+              ),
+              child: ClipRect(
+                child: OverflowBox(
+                  minHeight: 0,
+                  maxHeight: 68,
+                  alignment: Alignment.topCenter,
+                  child: AnimatedOpacity(
+                    opacity: _isSearchExpanded ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 220),
+                    child: ExcludeFocus(
+                      excluding: !_isSearchExpanded,
+                      child: IgnorePointer(
+                        ignoring: !_isSearchExpanded,
+                        child: _buildSearchField(),
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
             Expanded(
@@ -571,20 +721,21 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
                                   ],
                                 )
                               : ListView.builder(
-                                  cacheExtent: 250, controller: _scrollController,
+                                  cacheExtent: 250,
+                                  controller: _scrollController,
                                   physics:
                                       const AlwaysScrollableScrollPhysics(),
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 16, vertical: 8),
-                                  itemCount:
-                                      _filteredAndSortedProjects.length +
-                                          _filteredAndSortedIndividualCabinets
-                                              .length,
+                                  padding:
+                                      const EdgeInsets.fromLTRB(16, 10, 16, 8),
+                                  itemCount: _filteredAndSortedProjects.length +
+                                      _filteredAndSortedIndividualCabinets
+                                          .length,
                                   itemBuilder: (context, index) {
                                     final projectsCount =
                                         _filteredAndSortedProjects.length;
                                     final individualCount =
-                                        _filteredAndSortedIndividualCabinets.length;
+                                        _filteredAndSortedIndividualCabinets
+                                            .length;
                                     if (index < projectsCount) {
                                       final project =
                                           _filteredAndSortedProjects[index];
@@ -600,7 +751,7 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
                                             children: [
                                               Padding(
                                                 padding: const EdgeInsets.only(
-                                                    top: 4, bottom: 8, left: 4),
+                                                    top: 6, bottom: 8, left: 4),
                                                 child: Text(
                                                   'Проекты',
                                                   style: Theme.of(context)
@@ -675,25 +826,14 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
           ],
         ),
       ),
+    ),
       bottomNavBar: widget.isTab
           ? null
           : BottomNavBar(
               currentIndex: _currentIndex,
               onTap: _onNavTapped,
             ),
-      floatingActionButton: _isSelectionMode
-          ? null
-          : FloatingActionButton.extended(
-              heroTag: 'requests_hub_fab',
-              onPressed: () {
-                Navigator.pushNamed(context, '/requests-hub');
-              },
-              backgroundColor: Theme.of(context).colorScheme.primary,
-              foregroundColor: Colors.white,
-              icon: const Icon(Icons.assignment_outlined, size: 20),
-              label: const Text('Заявки',
-                  style: TextStyle(fontWeight: FontWeight.w600)),
-            ),
+      floatingActionButton: null,
     );
   }
 
@@ -745,7 +885,13 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
     final isSelected = _selectedCabinetIds.contains(cabinet.cabinetId);
 
     return RepaintBoundary(
-      child: GestureDetector(
+      child: AnimatedCard(
+        index: index,
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(16),
+        backgroundColor: isSelected
+            ? theme.colorScheme.primary.withValues(alpha: 0.08)
+            : null,
         onLongPress: () {
           if (!_isSelectionMode) {
             setState(() {
@@ -754,69 +900,64 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
             });
           }
         },
-        child: AnimatedCard(
-          index: index,
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.all(16),
-          backgroundColor:
-              isSelected ? theme.colorScheme.primary.withValues(alpha: 0.08) : null,
-          onTap: () {
-            if (_isSelectionMode) {
-              setState(() {
-          if (isSelected) {
-                  _selectedCabinetIds.remove(cabinet.cabinetId);
-                  if (_selectedCabinetIds.isEmpty &&
-                      _selectedProjectIds.isEmpty) {
-                    _isSelectionMode = false;
-                  }
-                } else {
-                  _selectedCabinetIds.add(cabinet.cabinetId);
+        onTap: () {
+          if (_isSelectionMode) {
+            setState(() {
+              if (isSelected) {
+                _selectedCabinetIds.remove(cabinet.cabinetId);
+                if (_selectedCabinetIds.isEmpty &&
+                    _selectedProjectIds.isEmpty) {
+                  _isSelectionMode = false;
                 }
-              });
-            } else {
-              Navigator.pushNamed(context, '/shu-detail/${cabinet.cabinetId}').then((_) {
-                _loadCabinets(forceRefresh: true, showLoading: false);
-              });
-            }
-          },
-          child: Row(
-            children: [
-              if (_isSelectionMode) ...[
-                Checkbox(
-                  value: isSelected,
-                  activeColor: theme.colorScheme.primary,
-                  onChanged: (val) {
-                    setState(() {
-                      if (isSelected) {
-                        _selectedCabinetIds.remove(cabinet.cabinetId);
-                        if (_selectedCabinetIds.isEmpty &&
-                            _selectedProjectIds.isEmpty) {
-                          _isSelectionMode = false;
-                        }
-                      } else {
-                        _selectedCabinetIds.add(cabinet.cabinetId);
+              } else {
+                _selectedCabinetIds.add(cabinet.cabinetId);
+              }
+            });
+            return;
+          }
+          Navigator.pushNamed(context, '/shu-detail/${cabinet.cabinetId}')
+              .then((_) {
+            _loadCabinets(forceRefresh: true, showLoading: false);
+          });
+        },
+        child: Row(
+          children: [
+            if (_isSelectionMode) ...[
+              Checkbox(
+                value: isSelected,
+                activeColor: theme.colorScheme.primary,
+                onChanged: (_) {
+                  setState(() {
+                    if (isSelected) {
+                      _selectedCabinetIds.remove(cabinet.cabinetId);
+                      if (_selectedCabinetIds.isEmpty &&
+                          _selectedProjectIds.isEmpty) {
+                        _isSelectionMode = false;
                       }
-                    });
-                  },
-                ),
-                const SizedBox(width: 8),
-              ],
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      theme.colorScheme.primary,
-                      theme.colorScheme.secondary
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Icon(Icons.memory, color: Colors.white, size: 24),
+                    } else {
+                      _selectedCabinetIds.add(cabinet.cabinetId);
+                    }
+                  });
+                },
               ),
+              const SizedBox(width: 8),
+            ],
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    theme.colorScheme.primary,
+                    theme.colorScheme.secondary
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(Icons.memory, color: Colors.white, size: 24),
+            ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -869,7 +1010,8 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
                         color: statusColor.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                            color: statusColor.withValues(alpha: 0.3), width: 1),
+                            color: statusColor.withValues(alpha: 0.3),
+                            width: 1),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -893,12 +1035,16 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
               if (!_isSelectionMode && cabinet.isPinned)
                 Padding(
                   padding: const EdgeInsets.only(right: 6),
-                  child: Transform.rotate(
-                    angle: 0.4,
-                    child: Icon(
-                      Icons.push_pin,
-                      size: 18,
-                      color: theme.colorScheme.primary,
+                  child: InkResponse(
+                    onTap: () => _togglePinCabinet(cabinet),
+                    radius: 18,
+                    child: Transform.rotate(
+                      angle: 0.4,
+                      child: Icon(
+                        Icons.push_pin,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                     ),
                   ),
                 ),
@@ -911,7 +1057,8 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
                       final chatId = chatData['id'];
                       if (chatId != null && mounted) {
                         Navigator.pushNamed(context, '/chat/$chatId');
-                        MainNavigationContainer.globalKey.currentState?.refreshChatsList();
+                        MainNavigationContainer.globalKey.currentState
+                            ?.refreshChatsList();
                       }
                     } on DioException catch (e) {
                       if (e.response?.statusCode == 403 ||
@@ -946,33 +1093,32 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
                       color: theme.colorScheme.primary.withValues(alpha: 0.2),
                       shape: BoxShape.circle,
                     ),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Icon(Icons.chat_bubble_outline,
-                              color: theme.colorScheme.primary, size: 18),
-                          if (cabinet.unreadCount > 0)
-                            Positioned(
-                              right: 2,
-                              top: 2,
-                              child: Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFF991B1B),
-                                  shape: BoxShape.circle,
-                                ),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Icon(Icons.chat_bubble_outline,
+                            color: theme.colorScheme.primary, size: 18),
+                        if (cabinet.unreadCount > 0)
+                          Positioned(
+                            right: 2,
+                            top: 2,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF991B1B),
+                                shape: BoxShape.circle,
                               ),
                             ),
-                        ],
-                      ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
             ],
           ),
         ),
-      ),
-    );
+      );
   }
 
   Widget _buildProjectFolderCard(Project project, int index) {
@@ -1093,8 +1239,8 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
                   return Text(
                     'Шкафов в проекте: $displayCount',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color:
-                          theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                      color: theme.colorScheme.onSurfaceVariant
+                          .withValues(alpha: 0.7),
                       fontSize: 11,
                       fontWeight: FontWeight.w500,
                     ),
@@ -1117,7 +1263,8 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
             ),
           if (!_isSelectionMode)
             Icon(Icons.chevron_right,
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
+                color:
+                    theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
           if (_isSelectionMode)
             const Icon(Icons.chevron_right, color: Colors.transparent),
         ],
@@ -1125,31 +1272,38 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
     );
   }
 
-
-
   Widget _buildSearchField() {
     final theme = Theme.of(context);
-    return TextField(
-      focusNode: _searchFocusNode,
-      onChanged: (value) => setState(() => _searchQuery = value),
-      decoration: InputDecoration(
-        hintText: 'Поиск по ШУ...',
-        prefixIcon: Icon(Icons.search,
-            color: theme.colorScheme.onSurfaceVariant, size: 24),
-        filled: true,
-        fillColor: theme.colorScheme.surfaceContainerHighest,
-        border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide.none),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.5),
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: TextField(
+        controller: _searchController,
+        focusNode: _searchFocusNode,
+        enabled: _isSearchExpanded,
+        onChanged: (value) => setState(() => _searchQuery = value),
+        decoration: InputDecoration(
+          hintText: 'Поиск по проектам и ШУ...',
+          prefixIcon: Icon(Icons.search,
+              color: theme.colorScheme.onSurfaceVariant, size: 24),
+          filled: true,
+          fillColor: theme.colorScheme.surfaceContainerHighest,
+          border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none),
+          enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide:
+                BorderSide(color: theme.colorScheme.primary, width: 1.5),
+          ),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
     );
   }
@@ -1168,7 +1322,8 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
               shape: BoxShape.circle,
             ),
             child: Icon(Icons.folder_open_outlined,
-                size: 48, color: theme.colorScheme.primary.withValues(alpha: 0.5)),
+                size: 48,
+                color: theme.colorScheme.primary.withValues(alpha: 0.5)),
           ),
           const SizedBox(height: 20),
           Text('Нет добавленных проектов и ШУ',
@@ -1177,8 +1332,8 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
           const SizedBox(height: 8),
           Text('Потяните вниз для обновления страницы',
               textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant)),
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
         ],
       ),
     );
@@ -1239,4 +1394,3 @@ class ShuListScreenState extends State<ShuListScreen> with WidgetsBindingObserve
     }
   }
 }
-

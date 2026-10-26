@@ -1,0 +1,302 @@
+// lib/widgets/draggable_floating_pill_overlay.dart
+import 'package:flutter/material.dart';
+import '../services/preferences_service.dart';
+
+/// Reusable overlay that wraps a screen body and displays a floating pill button
+/// that can be dragged to any part of the screen, animates with elevation & scale,
+/// morphs across screens via Hero, and persists its position across app restarts.
+class DraggableFloatingPillOverlay extends StatefulWidget {
+  final Widget child;
+  final String storageKey;
+  final String? heroTag;
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool isVisible;
+  final Color? backgroundColor;
+  final Color? foregroundColor;
+  final double? estimatedWidth;
+
+  const DraggableFloatingPillOverlay({
+    super.key,
+    required this.child,
+    required this.storageKey,
+    this.heroTag,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.isVisible = true,
+    this.backgroundColor,
+    this.foregroundColor,
+    this.estimatedWidth,
+  });
+
+  @override
+  State<DraggableFloatingPillOverlay> createState() =>
+      _DraggableFloatingPillOverlayState();
+}
+
+class _DraggableFloatingPillOverlayState
+    extends State<DraggableFloatingPillOverlay> {
+  final GlobalKey _buttonKey = GlobalKey();
+  Offset? _normalizedPosition;
+  Offset? _currentPixelPosition;
+  double? _measuredWidth;
+  double? _measuredHeight;
+  bool _isDragging = false;
+  bool _hasMoved = false;
+  double _accumulatedDelta = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPosition();
+    PreferencesService.fabPositionNotifier.addListener(_onFabPositionChanged);
+  }
+
+  @override
+  void dispose() {
+    PreferencesService.fabPositionNotifier.removeListener(_onFabPositionChanged);
+    super.dispose();
+  }
+
+  void _onFabPositionChanged() {
+    if (PreferencesService.lastUpdatedFabKey != null &&
+        PreferencesService.lastUpdatedFabKey != widget.storageKey) {
+      return;
+    }
+    if (mounted && !_isDragging) {
+      setState(() {
+        _loadPosition();
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant DraggableFloatingPillOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.storageKey != widget.storageKey) {
+      _loadPosition();
+    }
+    if (oldWidget.label != widget.label) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _measureButton());
+    }
+  }
+
+  void _loadPosition() {
+    final saved = PreferencesService.getFabNormalizedPosition(widget.storageKey);
+    if (saved != null) {
+      _normalizedPosition = saved;
+    } else {
+      _normalizedPosition = const Offset(1.0, 1.0);
+    }
+  }
+
+  void _measureButton() {
+    final renderBox =
+        _buttonKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox != null && renderBox.hasSize) {
+      final size = renderBox.size;
+      if (_measuredWidth != size.width || _measuredHeight != size.height) {
+        if (mounted) {
+          setState(() {
+            _measuredWidth = size.width;
+            _measuredHeight = size.height;
+          });
+        }
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measureButton());
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double buttonWidth =
+            _measuredWidth ?? widget.estimatedWidth ?? 120.0;
+        final double buttonHeight = _measuredHeight ?? 48.0;
+        const double margin = 16.0;
+        const double minX = margin;
+        const double minY = margin;
+
+        final double maxX = (constraints.maxWidth - buttonWidth - margin)
+            .clamp(minX, double.infinity);
+        final double maxY = (constraints.maxHeight - buttonHeight - margin)
+            .clamp(minY, double.infinity);
+
+        // Keep pixel position synchronized with normalized position when not dragging
+        if (!_isDragging) {
+          final double normX = _normalizedPosition?.dx ?? 1.0;
+          final double normY = _normalizedPosition?.dy ?? 1.0;
+          _currentPixelPosition = Offset(
+            (minX + normX * (maxX - minX)).clamp(minX, maxX),
+            (minY + normY * (maxY - minY)).clamp(minY, maxY),
+          );
+        } else if (_currentPixelPosition != null) {
+          _currentPixelPosition = Offset(
+            _currentPixelPosition!.dx.clamp(minX, maxX),
+            _currentPixelPosition!.dy.clamp(minY, maxY),
+          );
+        }
+
+        final double currentX = _currentPixelPosition?.dx ?? maxX;
+        final double currentY = _currentPixelPosition?.dy ?? maxY;
+
+        return Stack(
+          children: [
+            widget.child,
+            if (widget.isVisible)
+              Positioned(
+                left: currentX,
+                top: currentY,
+                child: _buildDraggableButton(
+                  minX: minX,
+                  maxX: maxX,
+                  minY: minY,
+                  maxY: maxY,
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildDraggableButton({
+    required double minX,
+    required double maxX,
+    required double minY,
+    required double maxY,
+  }) {
+    final theme = Theme.of(context);
+    final bgColor = widget.backgroundColor ?? theme.colorScheme.primary;
+    final fgColor = widget.foregroundColor ?? theme.colorScheme.onPrimary;
+
+    Widget pill = KeyedSubtree(
+      key: _buttonKey,
+      child: Material(
+        elevation: _isDragging ? 12 : 5,
+        shadowColor: Colors.black.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(24),
+        color: bgColor,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            color: bgColor,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                widget.icon,
+                color: fgColor,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                widget.label,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: fgColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (widget.heroTag != null) {
+      pill = Hero(
+        tag: widget.heroTag!,
+        flightShuttleBuilder: (
+          flightContext,
+          animation,
+          flightDirection,
+          fromHeroContext,
+          toHeroContext,
+        ) {
+          return Material(
+            color: Colors.transparent,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const NeverScrollableScrollPhysics(),
+              child: toHeroContext.widget,
+            ),
+          );
+        },
+        child: pill,
+      );
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onPanStart: (_) {
+        _accumulatedDelta = 0.0;
+        setState(() {
+          _isDragging = true;
+          _hasMoved = false;
+        });
+      },
+      onPanUpdate: (details) {
+        _accumulatedDelta += details.delta.distance;
+        if (_accumulatedDelta > 5.0) {
+          _hasMoved = true;
+        }
+
+        final cur = _currentPixelPosition ?? Offset(maxX, maxY);
+        final newX = (cur.dx + details.delta.dx).clamp(minX, maxX);
+        final newY = (cur.dy + details.delta.dy).clamp(minY, maxY);
+
+        setState(() {
+          _currentPixelPosition = Offset(newX, newY);
+        });
+      },
+      onPanEnd: (_) {
+        if (maxX > minX && maxY > minY && _currentPixelPosition != null) {
+          final nX =
+              ((_currentPixelPosition!.dx - minX) / (maxX - minX)).clamp(0.0, 1.0);
+          final nY =
+              ((_currentPixelPosition!.dy - minY) / (maxY - minY)).clamp(0.0, 1.0);
+          _normalizedPosition = Offset(nX, nY);
+          PreferencesService.saveFabNormalizedPosition(widget.storageKey, nX, nY);
+        }
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) {
+            setState(() {
+              _isDragging = false;
+              _hasMoved = false;
+            });
+          }
+        });
+      },
+      onPanCancel: () {
+        if (maxX > minX && maxY > minY && _currentPixelPosition != null) {
+          final nX =
+              ((_currentPixelPosition!.dx - minX) / (maxX - minX)).clamp(0.0, 1.0);
+          final nY =
+              ((_currentPixelPosition!.dy - minY) / (maxY - minY)).clamp(0.0, 1.0);
+          _normalizedPosition = Offset(nX, nY);
+          PreferencesService.saveFabNormalizedPosition(widget.storageKey, nX, nY);
+        }
+        setState(() {
+          _isDragging = false;
+          _hasMoved = false;
+        });
+      },
+      onTap: () {
+        if (!_hasMoved) {
+          widget.onTap();
+        }
+      },
+      child: AnimatedScale(
+        scale: _isDragging ? 1.08 : 1.0,
+        duration: const Duration(milliseconds: 150),
+        child: pill,
+      ),
+    );
+  }
+}

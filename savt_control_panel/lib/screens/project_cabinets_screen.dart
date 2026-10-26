@@ -9,6 +9,7 @@ import '../widgets/skeletons.dart';
 import '../models/cabinet.dart';
 import '../models/project.dart';
 import '../widgets/responsive_layout.dart';
+import '../widgets/draggable_floating_pill_overlay.dart';
 import '../main.dart';
 
 class ProjectCabinetsScreen extends StatefulWidget {
@@ -32,6 +33,11 @@ class _ProjectCabinetsScreenState extends State<ProjectCabinetsScreen> {
   String _error = '';
   bool _isSubmitting = false;
   final TextEditingController _commentController = TextEditingController();
+
+  bool _isSearchExpanded = false;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode(canRequestFocus: false);
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -84,24 +90,39 @@ class _ProjectCabinetsScreenState extends State<ProjectCabinetsScreen> {
     }
   }
 
-  Future<void> _loadProjectDetails() async {
-    setState(() {
-      _isLoading = true;
-      _error = '';
-    });
+  Future<void> _loadProjectDetails({bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() {
+        _isLoading = true;
+        _error = '';
+      });
+    }
+
+    try {
+      final cachedCabs = await cabinetService.getUserCabinets(forceRefresh: false);
+      if (mounted && cachedCabs.isNotEmpty) {
+        setState(() {
+          _userCabinets = cachedCabs;
+          if (_isLoading && cachedCabs.any((c) => c.projectId == widget.projectId)) {
+            _isLoading = false;
+          }
+        });
+      }
+    } catch (_) {}
 
     try {
       final details = await cabinetService.getProjectDetails(widget.projectId);
       final userCabs = await cabinetService.getUserCabinets(forceRefresh: true);
 
-    if (mounted) {
-      setState(() {
-        _projectDetails = details;
-        _userCabinets = userCabs;
-        _isLoading = false;
-      });
-      debugPrint('📊 [ProjectCabinets] projectCabinets=${details.cabinets.length}, userCabinets=${userCabs.length}');
-    }
+      if (mounted) {
+        setState(() {
+          _projectDetails = details;
+          _userCabinets = userCabs;
+          _isLoading = false;
+        });
+        debugPrint(
+            '📊 [ProjectCabinets] projectCabinets=${details.cabinets.length}, userCabinets=${userCabs.length}');
+      }
     } catch (e) {
       if (mounted) {
         final errStr = e.toString().toLowerCase();
@@ -119,16 +140,88 @@ class _ProjectCabinetsScreenState extends State<ProjectCabinetsScreen> {
           Navigator.pop(context, true);
           return;
         }
+        if (showLoading) {
+          setState(() {
+            _error = e.toString();
+            _isLoading = false;
+          });
+        }
+      }
+    }
+  }
+
+  Future<void> _togglePinCabinet(Cabinet cabinet) async {
+    final newPinned = !cabinet.isPinned;
+    final cabId = cabinet.cabinetId;
+
+    setState(() {
+      _userCabinets = _userCabinets.map((c) {
+        if (c.cabinetId == cabId) {
+          return c.copyWith(isPinned: newPinned);
+        }
+        return c;
+      }).toList();
+
+      if (_projectDetails != null) {
+        final updatedProjectCabs = _projectDetails!.cabinets.map((pc) {
+          if (pc.id == cabId) {
+            return ProjectCabinetInfo(
+              id: pc.id,
+              type: pc.type,
+              objectNumber: pc.objectNumber,
+              adminInternalName: pc.adminInternalName,
+              isPinned: newPinned,
+            );
+          }
+          return pc;
+        }).toList();
+
+        _projectDetails =
+            _projectDetails!.copyWith(cabinets: updatedProjectCabs);
+      }
+    });
+
+    try {
+      if (newPinned) {
+        await cabinetService.pinCabinet(cabId);
+      } else {
+        await cabinetService.unpinCabinet(cabId);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(newPinned ? 'Шкаф закреплен' : 'Шкаф откреплен'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
         setState(() {
-          _error = e.toString();
-          _isLoading = false;
+          _userCabinets = _userCabinets.map((c) {
+            if (c.cabinetId == cabId) {
+              return c.copyWith(isPinned: !newPinned);
+            }
+            return c;
+          }).toList();
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка изменения закрепления: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     }
   }
 
   @override
   void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
     _commentController.dispose();
     super.dispose();
   }
@@ -147,8 +240,9 @@ class _ProjectCabinetsScreenState extends State<ProjectCabinetsScreen> {
       for (final pcab in _projectDetails!.cabinets) {
         addedCabinetIds.add(pcab.id);
         final userCab = userCabinetMap[pcab.id];
+        final isPinned = (userCab?.isPinned ?? false) || pcab.isPinned;
         enrichedCabinets.add(
-          userCab ??
+          (userCab ??
               Cabinet(
                 cabinetId: pcab.id,
                 type: pcab.type,
@@ -156,8 +250,8 @@ class _ProjectCabinetsScreenState extends State<ProjectCabinetsScreen> {
                 customName: pcab.adminInternalName ?? '',
                 unreadCount: 0,
                 warrantyStatus: 'unknown',
-                isPinned: pcab.isPinned,
-              ),
+                isPinned: isPinned,
+              )).copyWith(isPinned: isPinned),
         );
       }
     }
@@ -171,59 +265,163 @@ class _ProjectCabinetsScreenState extends State<ProjectCabinetsScreen> {
         addedCabinetIds.add(cab.cabinetId);
       }
     }
+
+    // Закрепленные шкафы ВСЕГДА идут первыми в списке
+    enrichedCabinets.sort((a, b) {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      final aName = a.displayName;
+      final bName = b.displayName;
+      return aName.toLowerCase().compareTo(bName.toLowerCase());
+    });
     debugPrint(
         '📊 [ProjectCabinets] projectCabinets=${_projectDetails?.cabinets.length ?? 0} enriched=${enrichedCabinets.length} userCabinets=${_userCabinets.length}');
 
+    final filteredCabinets = _searchQuery.trim().isEmpty
+        ? enrichedCabinets
+        : enrichedCabinets.where((c) {
+            final q = _searchQuery.toLowerCase().trim();
+            final matchesName = c.displayName.toLowerCase().contains(q);
+            final matchesObjectNumber =
+                c.objectNumber.toLowerCase().contains(q);
+            final matchesType = c.type.toLowerCase().contains(q);
+            return matchesName || matchesObjectNumber || matchesType;
+          }).toList();
+
     return GradientScaffold(
       appBarTitle: widget.projectName,
-      body: ResponsiveContainer(
-        maxWidth: 600,
-        child: _isLoading
-            ? const SkeletonList()
-            : RefreshIndicator(
-                onRefresh: _loadProjectDetails,
-                color: AppColors.primaryLight,
-                child: _error.isNotEmpty
-                    ? ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        children: [
-                          SizedBox(
-                            height: MediaQuery.of(context).size.height * 0.6,
-                            child: _buildErrorState(),
-                          ),
-                        ],
-                      )
-                    : enrichedCabinets.isEmpty
-                        ? ListView(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            children: [
-                              SizedBox(
-                                height: MediaQuery.of(context).size.height * 0.6,
-                                child: _buildEmptyState(),
-                              ),
-                            ],
-                          )
-                        : ListView.builder(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.all(AppSpacing.base),
-                            itemCount: enrichedCabinets.length,
-                            itemBuilder: (context, index) {
-                              final cabinet = enrichedCabinets[index];
-                              return _buildCabinetCard(cabinet, index);
-                            },
-                          ),
-              ),
+      showBackButton: true,
+      appBarAction: IconButton(
+        icon: Icon(_isSearchExpanded ? Icons.close : Icons.search,
+            color: Colors.white),
+        onPressed: () {
+          if (_isSearchExpanded) {
+            _searchFocusNode.canRequestFocus = false;
+            _searchFocusNode.unfocus(
+                disposition: UnfocusDisposition.previouslyFocusedChild);
+            FocusManager.instance.primaryFocus?.unfocus();
+            setState(() {
+              _isSearchExpanded = false;
+              _searchQuery = '';
+              _searchController.clear();
+            });
+          } else {
+            _searchFocusNode.canRequestFocus = true;
+            setState(() {
+              _isSearchExpanded = true;
+            });
+            Future.delayed(const Duration(milliseconds: 150), () {
+              if (mounted && _isSearchExpanded) {
+                _searchFocusNode.requestFocus();
+              }
+            });
+          }
+        },
       ),
-      floatingActionButton: _isSubmitting
-          ? null
-          : FloatingActionButton.extended(
-              heroTag: 'scanner_to_add_shu',
-              onPressed: _addCabinetByPhoto,
-              backgroundColor: Theme.of(context).colorScheme.primary,
-              foregroundColor: Colors.white,
-              icon: const Icon(Icons.camera_alt, size: 20),
-              label: const Text('Добавить ШУ', style: TextStyle(fontWeight: FontWeight.w600)),
-            ),
+      body: DraggableFloatingPillOverlay(
+        storageKey: 'fab_pos_add_shu',
+        heroTag: 'scanner_to_add_shu',
+        icon: Icons.camera_alt,
+        label: 'Добавить ШУ',
+        estimatedWidth: 160.0,
+        isVisible: !_isSubmitting,
+        onTap: _addCabinetByPhoto,
+        child: ResponsiveContainer(
+          maxWidth: 600,
+          child: Column(
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 320),
+                curve: Curves.easeInOutCubic,
+                height: _isSearchExpanded ? 68 : 0,
+                padding: EdgeInsets.symmetric(
+                  horizontal: _isSearchExpanded ? 16 : 0,
+                  vertical: _isSearchExpanded ? 6 : 0,
+                ),
+                child: ClipRect(
+                  child: OverflowBox(
+                    minHeight: 0,
+                    maxHeight: 68,
+                    alignment: Alignment.topCenter,
+                    child: AnimatedOpacity(
+                      opacity: _isSearchExpanded ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 220),
+                      child: ExcludeFocus(
+                        excluding: !_isSearchExpanded,
+                        child: IgnorePointer(
+                          ignoring: !_isSearchExpanded,
+                          child: _buildSearchField(),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: _isLoading
+                    ? const SkeletonList()
+                    : RefreshIndicator(
+                        onRefresh: _loadProjectDetails,
+                        color: AppColors.primaryLight,
+                        child: _error.isNotEmpty
+                            ? ListView(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                children: [
+                                  SizedBox(
+                                    height:
+                                        MediaQuery.of(context).size.height * 0.6,
+                                    child: _buildErrorState(),
+                                  ),
+                                ],
+                              )
+                            : enrichedCabinets.isEmpty
+                                ? ListView(
+                                    physics:
+                                        const AlwaysScrollableScrollPhysics(),
+                                    children: [
+                                      SizedBox(
+                                        height: MediaQuery.of(context)
+                                                .size
+                                                .height *
+                                            0.6,
+                                        child: _buildEmptyState(),
+                                      ),
+                                    ],
+                                  )
+                                : filteredCabinets.isEmpty
+                                    ? ListView(
+                                        physics:
+                                            const AlwaysScrollableScrollPhysics(),
+                                        children: [
+                                          SizedBox(
+                                            height: MediaQuery.of(context)
+                                                    .size
+                                                    .height *
+                                                0.6,
+                                            child: _buildSearchEmptyState(),
+                                          ),
+                                        ],
+                                      )
+                                    : ListView.builder(
+                                        physics:
+                                            const AlwaysScrollableScrollPhysics(),
+                                        padding: const EdgeInsets.all(
+                                            AppSpacing.base),
+                                        itemCount: filteredCabinets.length,
+                                        itemBuilder: (context, index) {
+                                          final cabinet =
+                                              filteredCabinets[index];
+                                          return _buildCabinetCard(
+                                              cabinet, index);
+                                        },
+                                      ),
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      floatingActionButton: null,
     );
   }
 
@@ -237,9 +435,13 @@ class _ProjectCabinetsScreenState extends State<ProjectCabinetsScreen> {
       index: index,
       margin: const EdgeInsets.only(bottom: AppSpacing.md),
       padding: const EdgeInsets.all(AppSpacing.base),
-      onTap: () {
-        Navigator.pushNamed(context, '/shu-detail/${cabinet.cabinetId}');
+      onTap: () async {
+        await Navigator.pushNamed(context, '/shu-detail/${cabinet.cabinetId}');
+        if (mounted) {
+          _loadProjectDetails(showLoading: false);
+        }
       },
+      onLongPress: () => _togglePinCabinet(cabinet),
       child: Row(
         children: [
           Container(
@@ -315,12 +517,16 @@ class _ProjectCabinetsScreenState extends State<ProjectCabinetsScreen> {
           if (cabinet.isPinned)
             Padding(
               padding: const EdgeInsets.only(right: 6),
-              child: Transform.rotate(
-                angle: 0.4,
-                child: Icon(
-                  Icons.push_pin,
-                  size: 18,
-                  color: theme.colorScheme.primary,
+              child: InkResponse(
+                onTap: () => _togglePinCabinet(cabinet),
+                radius: 18,
+                child: Transform.rotate(
+                  angle: 0.4,
+                  child: Icon(
+                    Icons.push_pin,
+                    size: 18,
+                    color: theme.colorScheme.primary,
+                  ),
                 ),
               ),
             ),
@@ -392,6 +598,88 @@ class _ProjectCabinetsScreenState extends State<ProjectCabinetsScreen> {
                 style: theme.textTheme.bodyMedium
                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchEmptyState() {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.search_off_rounded,
+                  size: 40, color: theme.colorScheme.primary.withValues(alpha: 0.6)),
+            ),
+            gapH16,
+            Text('Ничего не найдено',
+                style: theme.textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700),
+                textAlign: TextAlign.center),
+            gapH8,
+            Text(
+              'По запросу "$_searchQuery" шкафы не найдены',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchField() {
+    final theme = Theme.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: TextField(
+        controller: _searchController,
+        focusNode: _searchFocusNode,
+        enabled: _isSearchExpanded,
+        onChanged: (value) => setState(() => _searchQuery = value),
+        decoration: InputDecoration(
+          hintText: 'Поиск шкафов в проекте...',
+          prefixIcon: Icon(Icons.search,
+              color: theme.colorScheme.onSurfaceVariant, size: 24),
+          suffixIcon: _searchQuery.isNotEmpty
+              ? IconButton(
+                  icon: Icon(Icons.clear,
+                      size: 20, color: theme.colorScheme.onSurfaceVariant),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                  },
+                )
+              : null,
+          filled: true,
+          fillColor: theme.colorScheme.surfaceContainerHighest,
+          border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none),
+          enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide:
+                BorderSide(color: theme.colorScheme.primary, width: 1.5),
+          ),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         ),
       ),
     );

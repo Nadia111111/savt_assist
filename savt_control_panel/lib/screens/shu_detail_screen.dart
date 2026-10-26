@@ -33,7 +33,7 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
   final Set<String> _downloadedFileNames = {};
   bool _isLoading = true;
   bool _loadingDocs = false;
-  bool _downloadingDoc = false;
+
 
   List<TelemetryAlarm> _telemetryAlarms = [];
   bool _loadingTelemetry = false;
@@ -204,59 +204,27 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
     }
 
     if (!mounted) return;
-    if (_downloadingDoc) return;
-    setState(() => _downloadingDoc = true);
+    if (DownloadManager.instance.isDocDownloading(docId)) return;
 
-    final progressController = StreamController<double>.broadcast();
-
-    // Показываем диалог прогресса
-    showDownloadProgressDialog(context, fileName, progressController.stream);
-
-    try {
-      // Скачиваем файл с отслеживанием прогресса
-      final bytes = await cabinetService.downloadDocumentWithProgress(
-        docId,
-        onProgress: (sent, total) {
-          if (total > 0) {
-            progressController.add(sent / total);
-          }
-        },
-      );
-
-      if (!mounted) return;
-      Navigator.pop(context); // Закрываем диалог прогресса
-
-      // Сохраняем на устройство
-      final savePath = await FileSaveHelper.saveFile(
-        context: context,
-        bytes: bytes,
-        fileName: fileName,
-      );
-
-      if (!mounted) return;
-      setState(() {
-        _downloadingDoc = false;
-        _downloadedFileNames.add(fileName);
-      });
-
-      // On web, browser handles download automatically, no need to open
-      if (savePath != 'Галерея' && !kIsWeb) {
-        final result = await OpenFile.open(savePath);
-        if (result.type != ResultType.done && mounted) {
-          _showError('Не удалось открыть файл: ${result.message}');
+    await DownloadManager.instance.startDownload(
+      context: context,
+      docId: docId,
+      fileName: fileName,
+      downloadAction: (cancelToken, onProgress) {
+        return cabinetService.downloadDocumentWithProgress(
+          docId,
+          cancelToken: cancelToken,
+          onProgress: onProgress,
+        );
+      },
+      onCompleted: (savePath) async {
+        if (mounted && !kIsWeb) {
+          setState(() {
+            _downloadedFileNames.add(fileName);
+          });
         }
-      }
-    } catch (e) {
-      if (mounted) {
-        try {
-          Navigator.pop(context);
-        } catch (_) {}
-      }
-      setState(() => _downloadingDoc = false);
-      _showError('Ошибка загрузки: $e');
-    } finally {
-      progressController.close();
-    }
+      },
+    );
   }
 
   Future<void> _requestDocumentAccess(Map<String, dynamic> doc) async {
@@ -455,58 +423,6 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
     } catch (e) {
       if (mounted) {
         _showError('Не удалось убрать шкаф: $e');
-      }
-    }
-  }
-
-  Future<void> _confirmLeaveProject() async {
-    final projectName = _cabinetDetail?['project_name'] ?? 'этого проекта';
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Выйти из проекта?'),
-        content: Text(
-          'Вы потеряете доступ ко всем шкафам проекта "$projectName". Чаты по проекту уйдут в архив.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Отмена'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Выйти'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    try {
-      final pId = _cabinetDetail?['project_id'];
-      if (pId != null) {
-        final parsedPid = pId is int ? pId : int.parse(pId.toString());
-        await cabinetService.leaveProject(parsedPid);
-      }
-      if (mounted) {
-        MainNavigationContainer.globalKey.currentState?.refreshChatsList();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Вы вышли из проекта'),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-        Navigator.pop(context, true);
-      }
-    } catch (e) {
-      if (mounted) {
-        _showError('Не удалось выйти из проекта: $e');
       }
     }
   }
@@ -799,25 +715,6 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
                 onPressed: _confirmDeleteCabinet,
               ),
             ),
-          ] else ...[
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.exit_to_app, color: Colors.red),
-                label: const Text('Выйти из проекта',
-                    style: TextStyle(
-                        color: Colors.red, fontWeight: FontWeight.w600)),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.red),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: _confirmLeaveProject,
-              ),
-            ),
           ],
         ],
       ),
@@ -924,30 +821,27 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
             subtitle: Text(doc['file_size_bytes'] != null
                 ? '${(doc['file_size_bytes'] / 1024).round()} KB'
                 : ''),
-            trailing: _downloadingDoc
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : hasAccess
-                    ? (isDownloaded && !kIsWeb
-                        ? OutlinedButton.icon(
-                            icon: const Icon(Icons.visibility, size: 16),
-                            label: const Text('Просмотр'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Theme.of(context).colorScheme.primary,
-                              side: BorderSide(
-                                  color: Theme.of(context).colorScheme.primary),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 8),
-                            ),
-                            onPressed: () => _openDownloadedDocument(fileName),
-                          )
-                        : ElevatedButton(
-                            onPressed: () => _downloadDocument(doc),
-                            child: const Text('Скачать'),
-                          ))
-                    : accessRequested
+            trailing: hasAccess
+                ? (isDownloaded && !kIsWeb
+                    ? OutlinedButton.icon(
+                        icon: const Icon(Icons.visibility, size: 16),
+                        label: const Text('Просмотр'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Theme.of(context).colorScheme.primary,
+                          side: BorderSide(
+                              color: Theme.of(context).colorScheme.primary),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 8),
+                        ),
+                        onPressed: () => _openDownloadedDocument(fileName),
+                      )
+                    : ElevatedButton(
+                        onPressed: DownloadManager.instance.isDocDownloading(doc['id'] ?? 0)
+                            ? null
+                            : () => _downloadDocument(doc),
+                        child: const Text('Скачать'),
+                      ))
+                : accessRequested
                         ? const OutlinedButton(
                             onPressed: null,
                             child: Text('Запрос отправлен'),

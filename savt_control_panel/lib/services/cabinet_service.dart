@@ -169,6 +169,10 @@ class CabinetService {
         await _offlineService.saveCache('cabinet_detail_$cabinetId', cached);
       }
     } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        debugPrint('⏹️ [CabinetService] Download of doc  was cancelled');
+        rethrow;
+      }
       throw _handleError(e);
     }
   }
@@ -192,6 +196,10 @@ class CabinetService {
       final response = await _apiClient.dio.get('/cabinets/$cabinetId/chat');
       return response.data;
     } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        debugPrint('⏹️ [CabinetService] Download of doc  was cancelled');
+        rethrow;
+      }
       throw _handleError(e);
     }
   }
@@ -207,6 +215,10 @@ class CabinetService {
       );
       return TelemetryStateResponse.fromJson(response.data);
     } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        debugPrint('⏹️ [CabinetService] Download of doc  was cancelled');
+        rethrow;
+      }
       throw _handleError(e);
     }
   }
@@ -246,6 +258,10 @@ class CabinetService {
       final response = await _apiClient.dio.get('/cabinet-addition-requests');
       return List<Map<String, dynamic>>.from(response.data['items'] ?? []);
     } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        debugPrint('⏹️ [CabinetService] Download of doc  was cancelled');
+        rethrow;
+      }
       throw _handleError(e);
     }
   }
@@ -256,6 +272,10 @@ class CabinetService {
           await _apiClient.dio.get('/cabinet-addition-requests/$requestId');
       return response.data;
     } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        debugPrint('⏹️ [CabinetService] Download of doc  was cancelled');
+        rethrow;
+      }
       throw _handleError(e);
     }
   }
@@ -266,6 +286,10 @@ class CabinetService {
         'user_message': userMessage,
       });
     } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        debugPrint('⏹️ [CabinetService] Download of doc  was cancelled');
+        rethrow;
+      }
       throw _handleError(e);
     }
   }
@@ -380,6 +404,10 @@ class CabinetService {
       }
       return bytes;
     } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        debugPrint('⏹️ [CabinetService] Download of doc  was cancelled');
+        rethrow;
+      }
       throw _handleError(e);
     }
   }
@@ -387,6 +415,7 @@ class CabinetService {
   Future<List<int>> downloadDocumentWithProgress(
     int docId, {
     void Function(int, int)? onProgress,
+    CancelToken? cancelToken,
   }) async {
     try {
       final response = await _apiClient.dio.get(
@@ -396,6 +425,7 @@ class CabinetService {
           sendTimeout: const Duration(seconds: 45),
           receiveTimeout: const Duration(seconds: 45),
         ),
+        cancelToken: cancelToken,
         onReceiveProgress: onProgress,
       );
       final bytes = response.data as List<int>;
@@ -445,6 +475,7 @@ class CabinetService {
               sendTimeout: const Duration(seconds: 30),
               receiveTimeout: const Duration(seconds: 30),
             ),
+            cancelToken: cancelToken,
             onReceiveProgress: onProgress,
           );
           return actualResponse.data as List<int>;
@@ -452,6 +483,10 @@ class CabinetService {
       }
       return bytes;
     } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        debugPrint('⏹️ [CabinetService] Download of doc  was cancelled');
+        rethrow;
+      }
       throw _handleError(e);
     }
   }
@@ -786,6 +821,10 @@ class CabinetService {
       await _invalidateProjectCache();
       return response.data;
     } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        debugPrint('⏹️ [CabinetService] Download of doc  was cancelled');
+        rethrow;
+      }
       throw _handleError(e);
     }
   }
@@ -813,6 +852,10 @@ class CabinetService {
       await _apiClient.dio.delete('/projects/$projectId');
       await _invalidateProjectCache();
     } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        debugPrint('⏹️ [CabinetService] Download of doc  was cancelled');
+        rethrow;
+      }
       throw _handleError(e);
     }
   }
@@ -822,6 +865,10 @@ class CabinetService {
       await _apiClient.dio.post('/projects/$projectId/pin');
       await _invalidateProjectCache();
     } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        debugPrint('⏹️ [CabinetService] Download of doc  was cancelled');
+        rethrow;
+      }
       throw _handleError(e);
     }
   }
@@ -831,6 +878,10 @@ class CabinetService {
       await _apiClient.dio.delete('/projects/$projectId/pin');
       await _invalidateProjectCache();
     } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        debugPrint('⏹️ [CabinetService] Download of doc  was cancelled');
+        rethrow;
+      }
       throw _handleError(e);
     }
   }
@@ -840,6 +891,10 @@ class CabinetService {
       await _apiClient.dio.post('/cabinets/$cabinetId/pin');
       await _invalidateProjectCache();
     } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        debugPrint('⏹️ [CabinetService] Download of doc  was cancelled');
+        rethrow;
+      }
       throw _handleError(e);
     }
   }
@@ -849,6 +904,10 @@ class CabinetService {
       await _apiClient.dio.delete('/cabinets/$cabinetId/pin');
       await _invalidateProjectCache();
     } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        debugPrint('⏹️ [CabinetService] Download of doc  was cancelled');
+        rethrow;
+      }
       throw _handleError(e);
     }
   }
@@ -858,6 +917,10 @@ class CabinetService {
       await _apiClient.dio.delete('/cabinets/$cabinetId');
       await _invalidateProjectCache();
     } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        debugPrint('⏹️ [CabinetService] Download of doc  was cancelled');
+        rethrow;
+      }
       throw _handleError(e);
     }
   }

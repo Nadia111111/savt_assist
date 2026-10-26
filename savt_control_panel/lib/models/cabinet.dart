@@ -24,6 +24,9 @@ class Cabinet {
     this.isPinned = false,
   });
 
+  String get displayName =>
+      customName.isNotEmpty ? customName : (type.isNotEmpty ? type : objectNumber);
+
   Cabinet copyWith({
     int? cabinetId,
     String? type,
