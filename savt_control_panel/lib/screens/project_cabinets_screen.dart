@@ -1,6 +1,8 @@
 // lib/screens/project_cabinets_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:open_file/open_file.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../widgets/gradient_scaffold.dart';
@@ -10,6 +12,9 @@ import '../models/cabinet.dart';
 import '../models/project.dart';
 import '../widgets/responsive_layout.dart';
 import '../widgets/draggable_floating_pill_overlay.dart';
+import '../widgets/document_action_button.dart';
+import '../services/file_save_helper.dart';
+import '../services/download_manager.dart';
 import '../main.dart';
 
 class ProjectCabinetsScreen extends StatefulWidget {
@@ -26,9 +31,17 @@ class ProjectCabinetsScreen extends StatefulWidget {
   State<ProjectCabinetsScreen> createState() => _ProjectCabinetsScreenState();
 }
 
-class _ProjectCabinetsScreenState extends State<ProjectCabinetsScreen> {
+class _ProjectCabinetsScreenState extends State<ProjectCabinetsScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  int _selectedTabIndex = 0;
+
   ProjectDetails? _projectDetails;
   List<Cabinet> _userCabinets = [];
+  List<Map<String, dynamic>> _projectDocuments = [];
+  final Set<String> _downloadedFileNames = {};
+  bool _loadingDocs = false;
+
   bool _isLoading = true;
   String _error = '';
   bool _isSubmitting = false;
@@ -42,7 +55,22 @@ class _ProjectCabinetsScreenState extends State<ProjectCabinetsScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (mounted && _selectedTabIndex != _tabController.index) {
+        setState(() => _selectedTabIndex = _tabController.index);
+      }
+    });
     _loadProjectDetails();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _commentController.dispose();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
   }
 
   Future<void> _addCabinetByPhoto() async {
@@ -98,6 +126,8 @@ class _ProjectCabinetsScreenState extends State<ProjectCabinetsScreen> {
       });
     }
 
+    _loadProjectDocuments();
+
     try {
       final cachedCabs = await cabinetService.getUserCabinets(forceRefresh: false);
       if (mounted && cachedCabs.isNotEmpty) {
@@ -145,6 +175,200 @@ class _ProjectCabinetsScreenState extends State<ProjectCabinetsScreen> {
             _error = e.toString();
             _isLoading = false;
           });
+        }
+      }
+    }
+  }
+
+  Future<void> _loadProjectDocuments() async {
+    setState(() => _loadingDocs = true);
+    try {
+      final docs = await cabinetService.getProjectDocuments(widget.projectId);
+      if (mounted) {
+        setState(() {
+          _projectDocuments = docs;
+          _loadingDocs = false;
+        });
+        _checkDownloadedFiles();
+      }
+    } catch (e) {
+      debugPrint('🔴 [ProjectDocuments] Error loading: $e');
+      if (mounted) {
+        setState(() => _loadingDocs = false);
+      }
+    }
+  }
+
+  Future<void> _checkDownloadedFiles() async {
+    final downloaded = <String>{};
+    for (final doc in _projectDocuments) {
+      final fileUrl = doc['file_url'] ?? doc['url'];
+      final fileName =
+          FileSaveHelper.ensureExtension(doc['title'] ?? 'document', fileUrl);
+      if (await FileSaveHelper.isFileDownloaded(fileName)) {
+        downloaded.add(fileName);
+      }
+    }
+    if (mounted) {
+      setState(() {
+        _downloadedFileNames.addAll(downloaded);
+      });
+    }
+  }
+
+  Future<void> _openDownloadedDocument(String fileName) async {
+    final localPath = await FileSaveHelper.getLocalFilePath(fileName);
+    if (localPath != null) {
+      if (!kIsWeb) {
+        final result = await OpenFile.open(localPath);
+        if (result.type != ResultType.done && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Не удалось открыть файл: ${result.message}'),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Файл не найден. Пожалуйста, скачайте его заново.'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _downloadDocument(Map<String, dynamic> doc) async {
+    final docId = doc['id'];
+    final fileUrl = doc['file_url'] ?? doc['url'];
+    final fileName =
+        FileSaveHelper.ensureExtension(doc['title'] ?? 'document', fileUrl);
+
+    if (doc['has_access'] == false) {
+      _requestDocumentAccess(doc);
+      return;
+    }
+
+    if (await FileSaveHelper.isFileDownloaded(fileName)) {
+      if (mounted) {
+        setState(() {
+          _downloadedFileNames.add(fileName);
+        });
+      }
+      await _openDownloadedDocument(fileName);
+      return;
+    }
+
+    if (!mounted) return;
+    if (DownloadManager.instance.isDocDownloading(docId)) return;
+
+    await DownloadManager.instance.startDownload(
+      context: context,
+      docId: docId,
+      fileName: fileName,
+      downloadAction: (cancelToken, onProgress) {
+        return cabinetService.downloadDocumentWithProgress(
+          docId,
+          cancelToken: cancelToken,
+          onProgress: onProgress,
+        );
+      },
+      onCompleted: (savePath) async {
+        if (mounted && !kIsWeb) {
+          setState(() {
+            _downloadedFileNames.add(fileName);
+          });
+        }
+      },
+    );
+  }
+
+  Future<void> _requestDocumentAccess(Map<String, dynamic> doc) async {
+    final commentController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final comment = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Запрос доступа'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Пожалуйста, укажите причину запроса доступа к документу:',
+                  textAlign: TextAlign.start,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: commentController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    hintText: 'Причина запроса (минимум 5 символов)...',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().length < 5) {
+                      return 'Введите не менее 5 символов';
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Отмена'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (formKey.currentState!.validate()) {
+                  Navigator.pop(ctx, commentController.text.trim());
+                }
+              },
+              child: const Text('Отправить'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (comment != null && comment.isNotEmpty) {
+      try {
+        final docId = doc['id'];
+        await cabinetService.requestDocumentAccess(docId, userMessage: comment);
+        if (mounted) {
+          setState(() {
+            doc['access_requested'] = true;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Запрос на доступ успешно отправлен'),
+              backgroundColor: AppColors.success,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Ошибка отправки запроса: $e'),
+              backgroundColor: AppColors.error,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
         }
       }
     }
@@ -218,13 +442,7 @@ class _ProjectCabinetsScreenState extends State<ProjectCabinetsScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    _searchFocusNode.dispose();
-    _commentController.dispose();
-    super.dispose();
-  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -324,7 +542,7 @@ class _ProjectCabinetsScreenState extends State<ProjectCabinetsScreen> {
         icon: Icons.camera_alt,
         label: 'Добавить ШУ',
         estimatedWidth: 160.0,
-        isVisible: !_isSubmitting,
+        isVisible: _selectedTabIndex == 0 && !_isSubmitting,
         onTap: _addCabinetByPhoto,
         child: ResponsiveContainer(
           maxWidth: 600,
@@ -357,71 +575,356 @@ class _ProjectCabinetsScreenState extends State<ProjectCabinetsScreen> {
                   ),
                 ),
               ),
-              Expanded(
-                child: _isLoading
-                    ? const SkeletonList()
-                    : RefreshIndicator(
-                        onRefresh: _loadProjectDetails,
-                        color: AppColors.primaryLight,
-                        child: _error.isNotEmpty
-                            ? ListView(
-                                physics: const AlwaysScrollableScrollPhysics(),
-                                children: [
-                                  SizedBox(
-                                    height:
-                                        MediaQuery.of(context).size.height * 0.6,
-                                    child: _buildErrorState(),
-                                  ),
-                                ],
-                              )
-                            : enrichedCabinets.isEmpty
-                                ? ListView(
-                                    physics:
-                                        const AlwaysScrollableScrollPhysics(),
-                                    children: [
-                                      SizedBox(
-                                        height: MediaQuery.of(context)
-                                                .size
-                                                .height *
-                                            0.6,
-                                        child: _buildEmptyState(),
-                                      ),
-                                    ],
-                                  )
-                                : filteredCabinets.isEmpty
-                                    ? ListView(
-                                        physics:
-                                            const AlwaysScrollableScrollPhysics(),
-                                        children: [
-                                          SizedBox(
-                                            height: MediaQuery.of(context)
-                                                    .size
-                                                    .height *
-                                                0.6,
-                                            child: _buildSearchEmptyState(),
-                                          ),
-                                        ],
-                                      )
-                                    : ListView.builder(
-                                        physics:
-                                            const AlwaysScrollableScrollPhysics(),
-                                        padding: const EdgeInsets.all(
-                                            AppSpacing.base),
-                                        itemCount: filteredCabinets.length,
-                                        itemBuilder: (context, index) {
-                                          final cabinet =
-                                              filteredCabinets[index];
-                                          return _buildCabinetCard(
-                                              cabinet, index);
-                                        },
-                                      ),
+
+              // Переключатель вкладок: Шкафы / Документы проекта
+              Container(
+                margin: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: TabBar(
+                  controller: _tabController,
+                  indicatorSize: TabBarIndicatorSize.tab,
+                  indicator: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 4,
+                        offset: const Offset(0, 1),
                       ),
+                    ],
+                  ),
+                  labelColor: Theme.of(context).colorScheme.primary,
+                  labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                  unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 13),
+                  dividerColor: Colors.transparent,
+                  tabs: [
+                    Tab(text: 'Шкафы (${enrichedCabinets.length})'),
+                    Tab(text: 'Документы (${_projectDocuments.length})'),
+                  ],
+                ),
+              ),
+
+              // Содержимое вкладок
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildCabinetsTab(enrichedCabinets, filteredCabinets),
+                    _buildDocumentsTab(),
+                  ],
+                ),
               ),
             ],
           ),
         ),
       ),
       floatingActionButton: null,
+    );
+  }
+
+  Widget _buildCabinetsTab(
+      List<Cabinet> enrichedCabinets, List<Cabinet> filteredCabinets) {
+    if (_isLoading) {
+      return const SkeletonList();
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadProjectDetails,
+      color: AppColors.primaryLight,
+      child: _error.isNotEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.6,
+                  child: _buildErrorState(),
+                ),
+              ],
+            )
+          : enrichedCabinets.isEmpty
+              ? ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: [
+                    SizedBox(
+                      height: MediaQuery.of(context).size.height * 0.6,
+                      child: _buildEmptyState(),
+                    ),
+                  ],
+                )
+              : filteredCabinets.isEmpty
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.6,
+                          child: _buildSearchEmptyState(),
+                        ),
+                      ],
+                    )
+                  : ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(AppSpacing.base),
+                      itemCount: filteredCabinets.length,
+                      itemBuilder: (context, index) {
+                        final cabinet = filteredCabinets[index];
+                        return _buildCabinetCard(cabinet, index);
+                      },
+                    ),
+    );
+  }
+
+  Widget _buildDocumentsTab() {
+    if (_loadingDocs && _projectDocuments.isEmpty) {
+      return const SkeletonList();
+    }
+
+    final query = _searchQuery.trim().toLowerCase();
+    final filtered = query.isEmpty
+        ? _projectDocuments
+        : _projectDocuments.where((doc) {
+            final title = (doc['title'] ?? '').toString().toLowerCase();
+            final docType = (doc['doc_type'] ?? '').toString().toLowerCase();
+            final tags = (doc['tags'] as List?)
+                    ?.map((t) => (t['name'] ?? '').toString().toLowerCase())
+                    .join(' ') ??
+                '';
+            return title.contains(query) ||
+                docType.contains(query) ||
+                tags.contains(query);
+          }).toList();
+
+    if (filtered.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _loadProjectDocuments,
+        color: AppColors.primaryLight,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: MediaQuery.of(context).size.height * 0.5,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      query.isNotEmpty
+                          ? Icons.search_off
+                          : Icons.folder_open_outlined,
+                      size: 56,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurfaceVariant
+                          .withValues(alpha: 0.5),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      query.isNotEmpty
+                          ? 'Документы не найдены'
+                          : 'В проекте пока нет документов',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    if (query.isEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'Общая документация проекта появится здесь',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant
+                              .withValues(alpha: 0.7),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadProjectDocuments,
+      color: AppColors.primaryLight,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(AppSpacing.base),
+        itemCount: filtered.length,
+        itemBuilder: (context, index) {
+          final doc = filtered[index];
+          return _buildProjectDocumentCard(doc);
+        },
+      ),
+    );
+  }
+
+  Widget _buildProjectDocumentCard(Map<String, dynamic> doc) {
+    final theme = Theme.of(context);
+    final hasAccess = doc['has_access'] != false;
+    final accessRequested = doc['access_requested'] == true;
+    final docType = (doc['doc_type'] ?? '').toString().toLowerCase();
+
+    IconData icon;
+    Color iconColor;
+    switch (docType) {
+      case 'pdf':
+        icon = Icons.picture_as_pdf_rounded;
+        iconColor = Colors.red.shade700;
+        break;
+      case 'doc':
+      case 'docx':
+      case 'word':
+        icon = Icons.description_rounded;
+        iconColor = Colors.blue.shade700;
+        break;
+      case 'xls':
+      case 'xlsx':
+      case 'excel':
+        icon = Icons.table_chart_rounded;
+        iconColor = Colors.green.shade700;
+        break;
+      case 'dwg':
+      case 'dxf':
+      case 'schema':
+      case 'drawing':
+        icon = Icons.architecture_rounded;
+        iconColor = Colors.teal.shade700;
+        break;
+      default:
+        icon = Icons.insert_drive_file_rounded;
+        iconColor = theme.colorScheme.primary;
+    }
+
+    final fileUrl = doc['file_url'] ?? doc['url'];
+    final fileName =
+        FileSaveHelper.ensureExtension(doc['title'] ?? 'document', fileUrl);
+    final isDownloaded = _downloadedFileNames.contains(fileName);
+    final docId = doc['id'] ?? 0;
+
+    final tags = (doc['tags'] as List?)
+            ?.map((t) => t['name']?.toString() ?? '')
+            .where((n) => n.isNotEmpty)
+            .toList() ??
+        [];
+
+    final sizeBytes = doc['file_size_bytes'];
+    final sizeText = sizeBytes != null
+        ? '${(sizeBytes / 1024).round()} KB'
+        : (doc['doc_type'] ?? '');
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        onTap: hasAccess
+            ? () => (isDownloaded && !kIsWeb)
+                ? _openDownloadedDocument(fileName)
+                : (DownloadManager.instance.isDocDownloading(docId) ||
+                        DownloadManager.instance.isDocQueued(docId))
+                    ? DownloadManager.instance.expand()
+                    : _downloadDocument(doc)
+            : () => _requestDocumentAccess(doc),
+        leading: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: iconColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: iconColor),
+        ),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                doc['title'] ?? 'Документ проекта',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+              ),
+            ),
+            if (!hasAccess) ...[
+              const SizedBox(width: 8),
+              const Icon(Icons.lock_rounded, size: 16, color: Colors.orange),
+            ],
+          ],
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 2),
+            Text(
+              sizeText,
+              style: TextStyle(
+                fontSize: 12,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            if (tags.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 4,
+                runSpacing: 2,
+                children: tags.map((t) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '#$t',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ],
+        ),
+        trailing: ValueListenableBuilder<List<DownloadTask>>(
+          valueListenable: DownloadManager.instance.tasksNotifier,
+          builder: (context, _, __) {
+            final isDownloading = DownloadManager.instance.isDocDownloading(docId);
+            final isQueued = DownloadManager.instance.isDocQueued(docId);
+            final currentTask = DownloadManager.instance.currentTaskNotifier.value;
+            final taskProgress = (isDownloading && currentTask != null && currentTask.docId == docId)
+                ? currentTask.progress
+                : null;
+
+            return DocumentActionButton(
+              hasAccess: hasAccess,
+              isDownloaded: isDownloaded && !kIsWeb,
+              isDownloading: isDownloading,
+              isQueued: isQueued,
+              accessRequested: accessRequested,
+              progress: taskProgress,
+              onDownload: () => _downloadDocument(doc),
+              onOpen: () => _openDownloadedDocument(fileName),
+              onRequestAccess: () => _requestDocumentAccess(doc),
+              onShowQueue: () => DownloadManager.instance.expand(),
+            );
+          },
+        ),
+      ),
     );
   }
 
@@ -652,7 +1155,9 @@ class _ProjectCabinetsScreenState extends State<ProjectCabinetsScreen> {
         enabled: _isSearchExpanded,
         onChanged: (value) => setState(() => _searchQuery = value),
         decoration: InputDecoration(
-          hintText: 'Поиск шкафов в проекте...',
+          hintText: _selectedTabIndex == 0
+              ? 'Поиск шкафов в проекте...'
+              : 'Поиск документов проекта...',
           prefixIcon: Icon(Icons.search,
               color: theme.colorScheme.onSurfaceVariant, size: 24),
           suffixIcon: _searchQuery.isNotEmpty

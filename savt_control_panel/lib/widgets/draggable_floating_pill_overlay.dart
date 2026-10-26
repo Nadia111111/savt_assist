@@ -175,54 +175,26 @@ class _DraggableFloatingPillOverlayState
     required double maxPillWidth,
   }) {
     final theme = Theme.of(context);
-    
-    // Подбираем яркий градиент и свечение
-    final List<Color> gradientColors;
-    final Color glowColor;
-
-    if (widget.backgroundColor != null) {
-      gradientColors = [
-        widget.backgroundColor!,
-        widget.backgroundColor!.withValues(alpha: 0.85),
-      ];
-      glowColor = widget.backgroundColor!;
-    } else if (widget.label.toLowerCase().contains('рекламац')) {
-      // Яркий кораллово-огненный градиент для рекламаций
-      gradientColors = const [Color(0xFFFF5722), Color(0xFFE64A19)];
-      glowColor = const Color(0xFFEA580C);
-    } else if (widget.label.toLowerCase().contains('новая заявка')) {
-      // Электрик лазурный градиент для новой заявки
-      gradientColors = const [Color(0xFF0EA5E9), Color(0xFF0284C7)];
-      glowColor = const Color(0xFF0284C7);
-    } else {
-      // Королевский синий ультрамарин для "Заявки" (Хаб)
-      gradientColors = const [Color(0xFF3B82F6), Color(0xFF1D4ED8)];
-      glowColor = const Color(0xFF2563EB);
-    }
-
-    final fgColor = widget.foregroundColor ?? Colors.white;
+    final bgColor = widget.backgroundColor ?? theme.colorScheme.primary;
+    final fgColor = widget.foregroundColor ?? theme.colorScheme.onPrimary;
 
     Widget pill = KeyedSubtree(
       key: _buttonKey,
       child: Container(
         constraints: BoxConstraints(maxWidth: maxPillWidth),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(26),
-          gradient: LinearGradient(
-            colors: gradientColors,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          borderRadius: BorderRadius.circular(24),
+          color: bgColor,
           boxShadow: [
             BoxShadow(
-              color: glowColor.withValues(alpha: _isDragging ? 0.55 : 0.38),
-              blurRadius: _isDragging ? 18 : 12,
-              offset: Offset(0, _isDragging ? 8 : 4),
+              color: Colors.black.withValues(alpha: _isDragging ? 0.35 : 0.22),
+              blurRadius: _isDragging ? 14 : 7,
+              offset: Offset(0, _isDragging ? 6 : 3),
             ),
           ],
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.3),
-            width: 1.2,
+            color: Colors.white.withValues(alpha: 0.18),
+            width: 1,
           ),
         ),
         child: Material(
@@ -232,17 +204,10 @@ class _DraggableFloatingPillOverlayState
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.22),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    widget.icon,
-                    color: fgColor,
-                    size: 18,
-                  ),
+                Icon(
+                  widget.icon,
+                  color: fgColor,
+                  size: 20,
                 ),
                 const SizedBox(width: 8),
                 Flexible(
@@ -253,9 +218,8 @@ class _DraggableFloatingPillOverlayState
                     softWrap: false,
                     style: theme.textTheme.labelLarge?.copyWith(
                       color: fgColor,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w600,
                       fontSize: 14,
-                      letterSpacing: 0.2,
                     ),
                   ),
                 ),

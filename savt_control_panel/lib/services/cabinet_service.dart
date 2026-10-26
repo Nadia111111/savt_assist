@@ -253,6 +253,45 @@ class CabinetService {
     }
   }
 
+  Future<List<Map<String, dynamic>>> getProjectDocuments(int projectId,
+      {int page = 1,
+      int size = 20,
+      String? docType,
+      String? sortBy,
+      String? sortOrder,
+      List<int>? tagIds}) async {
+    try {
+      final queryParams = <String, dynamic>{
+        'page': page,
+        'size': size,
+      };
+      if (docType != null && docType.isNotEmpty) queryParams['doc_type'] = docType;
+      if (sortBy != null && sortBy.isNotEmpty) queryParams['sort_by'] = sortBy;
+      if (sortOrder != null && sortOrder.isNotEmpty) queryParams['sort_order'] = sortOrder;
+      if (tagIds != null && tagIds.isNotEmpty) queryParams['tag_ids'] = tagIds.join(',');
+
+      final response = await _apiClient.dio.get(
+        '/projects/$projectId/documents',
+        queryParameters: queryParams,
+        options: Options(
+          sendTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 10),
+        ),
+      );
+      final items =
+          List<Map<String, dynamic>>.from(response.data['items'] ?? []);
+      if (page == 1) {
+        await _offlineService.saveCache('project_documents_$projectId', items);
+      }
+      return items;
+    } on DioException catch (e) {
+      final cached =
+          await _offlineService.getCache('project_documents_$projectId');
+      if (cached != null) return List<Map<String, dynamic>>.from(cached);
+      throw _handleError(e);
+    }
+  }
+
   Future<List<Map<String, dynamic>>> getUserAdditionRequests() async {
     try {
       final response = await _apiClient.dio.get('/cabinet-addition-requests');
