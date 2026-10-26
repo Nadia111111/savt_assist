@@ -759,89 +759,105 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
         ),
       );
     }
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _documents.length,
-      itemBuilder: (context, index) {
-        final doc = _documents[index];
-        final hasAccess = doc['has_access'] ?? false;
-        final accessRequested = doc['access_requested'] ?? false;
-        final docType = doc['doc_type'] ?? 'document';
+    return ValueListenableBuilder<List<DownloadTask>>(
+      valueListenable: DownloadManager.instance.tasksNotifier,
+      builder: (context, _, __) {
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: _documents.length,
+          itemBuilder: (context, index) {
+            final doc = _documents[index];
+            final hasAccess = doc['has_access'] ?? false;
+            final accessRequested = doc['access_requested'] ?? false;
+            final docType = doc['doc_type'] ?? 'document';
 
-        IconData icon;
-        switch (docType) {
-          case 'passport':
-            icon = Icons.description;
-          case 'manual':
-            icon = Icons.menu_book;
-          case 'wiring_diagram':
-            icon = Icons.timeline;
-          case 'electrical_schema':
-            icon = Icons.electric_bolt;
-          case 'registers_map':
-            icon = Icons.map;
-          default:
-            icon = Icons.insert_drive_file;
-        }
+            IconData icon;
+            switch (docType) {
+              case 'passport':
+                icon = Icons.description;
+              case 'manual':
+                icon = Icons.menu_book;
+              case 'wiring_diagram':
+                icon = Icons.timeline;
+              case 'electrical_schema':
+                icon = Icons.electric_bolt;
+              case 'registers_map':
+                icon = Icons.map;
+              default:
+                icon = Icons.insert_drive_file;
+            }
 
-        final fileUrl = doc['file_url'] ?? doc['url'];
-        final fileName =
-            FileSaveHelper.ensureExtension(doc['title'] ?? 'document', fileUrl);
-        final isDownloaded = _downloadedFileNames.contains(fileName);
+            final fileUrl = doc['file_url'] ?? doc['url'];
+            final fileName =
+                FileSaveHelper.ensureExtension(doc['title'] ?? 'document', fileUrl);
+            final isDownloaded = _downloadedFileNames.contains(fileName);
+            final docId = doc['id'] ?? 0;
+            final isDownloading = DownloadManager.instance.isDocDownloading(docId);
+            final isQueued = DownloadManager.instance.isDocQueued(docId);
 
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: ListTile(
-            onTap: hasAccess
-                ? () => (isDownloaded && !kIsWeb)
-                    ? _openDownloadedDocument(fileName)
-                    : _downloadDocument(doc)
-                : null,
-            leading: Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: Theme.of(context).colorScheme.primary),
-            ),
-            title: Row(
-              children: [
-                Expanded(
-                  child: Text(doc['title'] ?? 'Документ',
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                ),
-                if (!hasAccess) ...[
-                  const SizedBox(width: 8),
-                  const Icon(Icons.lock, size: 16, color: Colors.orange),
-                ],
-              ],
-            ),
-            subtitle: Text(doc['file_size_bytes'] != null
-                ? '${(doc['file_size_bytes'] / 1024).round()} KB'
-                : ''),
-            trailing: hasAccess
-                ? (isDownloaded && !kIsWeb
-                    ? OutlinedButton.icon(
-                        icon: const Icon(Icons.visibility, size: 16),
-                        label: const Text('Просмотр'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Theme.of(context).colorScheme.primary,
-                          side: BorderSide(
-                              color: Theme.of(context).colorScheme.primary),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 8),
-                        ),
-                        onPressed: () => _openDownloadedDocument(fileName),
-                      )
-                    : ElevatedButton(
-                        onPressed: DownloadManager.instance.isDocDownloading(doc['id'] ?? 0)
+            return Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: ListTile(
+                onTap: hasAccess
+                    ? () => (isDownloaded && !kIsWeb)
+                        ? _openDownloadedDocument(fileName)
+                        : (isDownloading || isQueued)
                             ? null
-                            : () => _downloadDocument(doc),
-                        child: const Text('Скачать'),
-                      ))
-                : accessRequested
+                            : _downloadDocument(doc)
+                    : null,
+                leading: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, color: Theme.of(context).colorScheme.primary),
+                ),
+                title: Row(
+                  children: [
+                    Expanded(
+                      child: Text(doc['title'] ?? 'Документ',
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                    ),
+                    if (!hasAccess) ...[
+                      const SizedBox(width: 8),
+                      const Icon(Icons.lock, size: 16, color: Colors.orange),
+                    ],
+                  ],
+                ),
+                subtitle: Text(doc['file_size_bytes'] != null
+                    ? ' KB'
+                    : ''),
+                trailing: hasAccess
+                    ? (isDownloaded && !kIsWeb
+                        ? OutlinedButton.icon(
+                            icon: const Icon(Icons.visibility, size: 16),
+                            label: const Text('Просмотр'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Theme.of(context).colorScheme.primary,
+                              side: BorderSide(
+                                  color: Theme.of(context).colorScheme.primary),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 8),
+                            ),
+                            onPressed: () => _openDownloadedDocument(fileName),
+                          )
+                        : isDownloading
+                            ? const ElevatedButton(
+                                onPressed: null,
+                                child: Text('Загрузка...'),
+                              )
+                            : isQueued
+                                ? const OutlinedButton(
+                                    onPressed: null,
+                                    child: Text('В очереди'),
+                                  )
+                                : ElevatedButton(
+                                    onPressed: () => _downloadDocument(doc),
+                                    child: const Text('Скачать'),
+                                  ))
+                    : accessRequested
                         ? const OutlinedButton(
                             onPressed: null,
                             child: Text('Запрос отправлен'),
@@ -850,13 +866,15 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
                             onPressed: () => _requestDocumentAccess(doc),
                             child: const Text('Запросить доступ'),
                           ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
   }
 
-  Widget _buildTelemetryTab() {
+    Widget _buildTelemetryTab() {
     if (!_hasTelemetryAccess) {
       return Center(
         child: Column(

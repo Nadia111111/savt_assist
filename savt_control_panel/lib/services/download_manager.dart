@@ -1,5 +1,6 @@
 // lib/services/download_manager.dart
 import 'dart:async';
+import 'dart:math';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -7,50 +8,85 @@ import 'package:open_file/open_file.dart';
 import '../main.dart';
 import 'file_save_helper.dart';
 
-/// Состояние текущей активной загрузки
-class ActiveDownload {
+/// Статус задачи скачивания
+enum DownloadStatus {
+  queued,
+  downloading,
+  completed,
+  cancelled,
+  failed,
+}
+
+/// Задача в очереди скачивания
+class DownloadTask {
   final int docId;
   final String fileName;
   final CancelToken cancelToken;
-  final ValueNotifier<double> progress = ValueNotifier<double>(0.0);
-  final ValueNotifier<int> receivedBytes = ValueNotifier<int>(0);
-  final ValueNotifier<int> totalBytes = ValueNotifier<int>(0);
-  final ValueNotifier<bool> isMinimized = ValueNotifier<bool>(false);
-  final ValueNotifier<String> statusText =
-      ValueNotifier<String>('Подключение...');
+  final Future<List<int>> Function(
+    CancelToken cancelToken,
+    void Function(int received, int total) onProgress,
+  ) downloadAction;
+  final Future<void> Function(String savePath)? onCompleted;
 
-  final Future<void> Function(String savePath)? onComplete;
+  DownloadStatus status;
+  double progress = 0.0;
+  int receivedBytes = 0;
+  int totalBytes = 0;
+  String? savePath;
+  String? error;
 
-  ActiveDownload({
+  DownloadTask({
     required this.docId,
     required this.fileName,
-    required this.cancelToken,
-    this.onComplete,
-  });
-
-  void dispose() {
-    progress.dispose();
-    receivedBytes.dispose();
-    totalBytes.dispose();
-    isMinimized.dispose();
-    statusText.dispose();
-  }
+    required this.downloadAction,
+    this.onCompleted,
+    CancelToken? cancelToken,
+  })  : cancelToken = cancelToken ?? CancelToken(),
+        status = DownloadStatus.queued;
 }
 
-/// Сервис управления скачиванием файлов с поддержкой отмены, фонового режима и мини-окна
-class DownloadManager {
+/// Сервис управления очередью скачивания файлов (поддержка 10+ файлов, отмена, сворачивание в мини-окошко)
+class DownloadManager extends ChangeNotifier {
   static final DownloadManager instance = DownloadManager._();
   DownloadManager._();
 
-  final ValueNotifier<ActiveDownload?> activeDownload =
-      ValueNotifier<ActiveDownload?>(null);
+  /// Список задач в очереди
+  final ValueNotifier<List<DownloadTask>> tasksNotifier =
+      ValueNotifier<List<DownloadTask>>([]);
 
-  bool get isDownloading => activeDownload.value != null;
-  bool isDocDownloading(int docId) => activeDownload.value?.docId == docId;
+  /// Текущая выполняемая задача
+  final ValueNotifier<DownloadTask?> currentTaskNotifier =
+      ValueNotifier<DownloadTask?>(null);
 
-  BuildContext? _currentDialogContext;
+  /// Свернуто ли модальное окно в мини-окошко
+  final ValueNotifier<bool> isMinimizedNotifier = ValueNotifier<bool>(false);
 
-  /// Запуск скачивания документа
+  bool _isProcessing = false;
+
+  bool get isDownloading => currentTaskNotifier.value != null;
+
+  /// Проверка: скачивается ли конкретный документ прямо сейчас
+  bool isDocDownloading(int docId) =>
+      currentTaskNotifier.value?.docId == docId;
+
+  /// Проверка: находится ли документ в очереди ожидания
+  bool isDocQueued(int docId) => tasksNotifier.value.any(
+      (t) => t.docId == docId && t.status == DownloadStatus.queued);
+
+  /// Проверка: документ либо скачивается, либо уже в очереди
+  bool isDocActive(int docId) => tasksNotifier.value.any((t) =>
+      t.docId == docId &&
+      (t.status == DownloadStatus.queued ||
+          t.status == DownloadStatus.downloading));
+
+  /// Количество активных задач (скачивающихся + в очереди)
+  int get activeCount => tasksNotifier.value
+      .where((t) =>
+          t.status == DownloadStatus.queued ||
+          t.status == DownloadStatus.downloading)
+      .length;
+
+  /// Добавление документа в очередь на скачивание (поддерживает 10 и более файлов)
   Future<void> startDownload({
     required BuildContext context,
     required int docId,
@@ -61,201 +97,318 @@ class DownloadManager {
     ) downloadAction,
     Future<void> Function(String savePath)? onCompleted,
   }) async {
-    if (activeDownload.value != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Уже выполняется другое скачивание'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+    // Если файл уже скачивается или в очереди — уведомляем
+    if (isDocActive(docId)) {
+      final navContext =
+          ControlPanelApp.navigatorKey.currentContext ?? context;
+      if (navContext.mounted) {
+        ScaffoldMessenger.of(navContext).showSnackBar(
+          SnackBar(
+            content: Text('Файл "$fileName" уже в очереди скачивания'),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
       return;
     }
 
-    final cancelToken = CancelToken();
-    final active = ActiveDownload(
+    final task = DownloadTask(
       docId: docId,
       fileName: fileName,
-      cancelToken: cancelToken,
-      onComplete: onCompleted,
+      downloadAction: downloadAction,
+      onCompleted: onCompleted,
     );
 
-    activeDownload.value = active;
+    final wasEmpty = tasksNotifier.value.isEmpty;
+    tasksNotifier.value = [...tasksNotifier.value, task];
+    notifyListeners();
 
-    // Открываем модальное окно прогресса
-    _showDownloadDialog(context, active);
+    final navContext =
+        ControlPanelApp.navigatorKey.currentContext ?? context;
 
-    try {
-      final bytes = await downloadAction(
-        cancelToken,
-        (received, total) {
-          active.receivedBytes.value = received;
-          active.totalBytes.value = total;
-          if (total > 0) {
-            final p = (received / total).clamp(0.0, 1.0);
-            active.progress.value = p;
-            active.statusText.value = 'Скачивание...';
-          } else {
-            active.progress.value = 0.0;
-            active.statusText.value = 'Загрузка данных...';
-          }
-        },
-      );
-
-      // Загрузка завершена
-      _dismissDialogIfOpen();
-
-      final rootContext = ControlPanelApp.navigatorKey.currentContext;
-      if (rootContext == null || !rootContext.mounted) return;
-      final savePath = await FileSaveHelper.saveFile(
-        context: rootContext,
-        bytes: bytes,
-        fileName: fileName,
-      );
-
-      activeDownload.value = null;
-      active.dispose();
-
-      if (onCompleted != null) {
-        await onCompleted(savePath);
-      }
-
-      if (rootContext.mounted) {
-        ScaffoldMessenger.of(rootContext).showSnackBar(
+    if (!wasEmpty) {
+      // Уже есть скачивающиеся файлы: показываем информационный тост о добавлении в очередь
+      final queuePos = tasksNotifier.value
+          .where((t) =>
+              t.status == DownloadStatus.queued ||
+              t.status == DownloadStatus.downloading)
+          .length;
+      if (navContext.mounted) {
+        ScaffoldMessenger.of(navContext).showSnackBar(
           SnackBar(
-            content: Text('Файл "$fileName" успешно скачан'),
+            content: Text('Добавлено в очередь ($queuePos): "$fileName"'),
             behavior: SnackBarBehavior.floating,
-            backgroundColor: const Color(0xFF10B981),
-            action: (!kIsWeb && savePath != 'Галерея')
-                ? SnackBarAction(
-                    label: 'Открыть',
-                    textColor: Colors.white,
-                    onPressed: () {
-                      OpenFile.open(savePath);
-                    },
-                  )
-                : null,
+            duration: const Duration(seconds: 2),
           ),
         );
       }
-
-      if (savePath != 'Галерея' && !kIsWeb) {
-        final result = await OpenFile.open(savePath);
-        if (result.type != ResultType.done && rootContext.mounted) {
-          debugPrint('Could not auto-open file: ${result.message}');
-        }
-      }
-    } catch (e) {
-      _dismissDialogIfOpen();
-
-      final wasCancelled = CancelToken.isCancel(e as dynamic) ||
-          e.toString().contains('cancelled_by_user') ||
-          e.toString().contains('Загрузка отменена');
-
-      activeDownload.value = null;
-      active.dispose();
-
-      final rootContext = ControlPanelApp.navigatorKey.currentContext;
-      if (rootContext != null && rootContext.mounted) {
-        if (wasCancelled) {
-          ScaffoldMessenger.of(rootContext).showSnackBar(
-            SnackBar(
-              content: Text('Скачивание "$fileName" отменено'),
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(rootContext).showSnackBar(
-            SnackBar(
-              content: Text('Ошибка скачивания: $e'),
-              backgroundColor: Colors.red,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-      }
+    } else {
+      // Первая загрузка: открываем модальное окно развернутым
+      isMinimizedNotifier.value = false;
     }
+
+    // Запускаем обработчик очереди, если он не работает
+    _processQueue();
   }
 
-  /// Свернуть окно скачивания в фоновое маленькое окошко
-  void minimizeDownload() {
-    final active = activeDownload.value;
-    if (active != null) {
-      _dismissDialogIfOpen();
-      active.isMinimized.value = true;
-    }
+  /// Свернуть модальное окно в маленькое плавающее окошко
+  void minimize() {
+    isMinimizedNotifier.value = true;
   }
 
   /// Развернуть обратно в модальное окно
-  void expandDownload(BuildContext? context) {
-    final active = activeDownload.value;
-    final targetContext =
-        context ?? ControlPanelApp.navigatorKey.currentContext;
-    if (active != null && targetContext != null && targetContext.mounted) {
-      active.isMinimized.value = false;
-      _showDownloadDialog(targetContext, active);
+  void expand() {
+    isMinimizedNotifier.value = false;
+  }
+
+  /// Отменить конкретную задачу
+  void cancelTask(DownloadTask task) {
+    if (task.status == DownloadStatus.downloading) {
+      task.cancelToken.cancel('cancelled_by_user');
+      task.status = DownloadStatus.cancelled;
+    } else if (task.status == DownloadStatus.queued) {
+      task.status = DownloadStatus.cancelled;
+      tasksNotifier.value =
+          tasksNotifier.value.where((t) => t != task).toList();
+    }
+    tasksNotifier.value = List.from(tasksNotifier.value);
+    notifyListeners();
+
+    final navContext = ControlPanelApp.navigatorKey.currentContext;
+    if (navContext != null && navContext.mounted) {
+      ScaffoldMessenger.of(navContext).showSnackBar(
+        SnackBar(
+          content: Text('Скачивание "${task.fileName}" отменено'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
   }
 
-  /// Отменить текущую загрузку
-  void cancelDownload({bool showToast = true}) {
-    final active = activeDownload.value;
-    if (active != null) {
-      active.cancelToken.cancel('cancelled_by_user');
-      _dismissDialogIfOpen();
-    }
-  }
-
-  void _dismissDialogIfOpen() {
-    if (_currentDialogContext != null) {
-      try {
-        Navigator.of(_currentDialogContext!).pop();
-      } catch (_) {}
-      _currentDialogContext = null;
-    }
-  }
-
-  void _showDownloadDialog(BuildContext context, ActiveDownload active) {
-    _dismissDialogIfOpen();
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogCtx) {
-        _currentDialogContext = dialogCtx;
-        return PopScope(
-          canPop: false,
-          onPopInvokedWithResult: (didPop, result) {
-            if (didPop) return;
-            // Кнопка «Назад» на телефоне сворачивает в фон
-            minimizeDownload();
-          },
-          child: DownloadProgressDialogWidget(
-            active: active,
-            onMinimize: minimizeDownload,
-            onCancel: () => cancelDownload(showToast: true),
-          ),
-        );
-      },
-    ).then((_) {
-      if (_currentDialogContext != null) {
-        _currentDialogContext = null;
+  /// Отменить все активные и ожидающие задачи в очереди
+  void cancelAll() {
+    for (final task in tasksNotifier.value) {
+      if (task.status == DownloadStatus.downloading) {
+        task.cancelToken.cancel('cancelled_by_user');
+        task.status = DownloadStatus.cancelled;
+      } else if (task.status == DownloadStatus.queued) {
+        task.status = DownloadStatus.cancelled;
       }
-    });
+    }
+
+    tasksNotifier.value = [];
+    currentTaskNotifier.value = null;
+    isMinimizedNotifier.value = false;
+    notifyListeners();
+
+    final navContext = ControlPanelApp.navigatorKey.currentContext;
+    if (navContext != null && navContext.mounted) {
+      ScaffoldMessenger.of(navContext).showSnackBar(
+        const SnackBar(
+          content: Text('Все скачивания отменены'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  /// Последовательная обработка очереди
+  Future<void> _processQueue() async {
+    if (_isProcessing) return;
+    _isProcessing = true;
+
+    while (true) {
+      final list = tasksNotifier.value;
+      final queuedIndex =
+          list.indexWhere((t) => t.status == DownloadStatus.queued);
+
+      if (queuedIndex == -1) {
+        break; // Нет больше файлов в очереди
+      }
+
+      final task = list[queuedIndex];
+      task.status = DownloadStatus.downloading;
+      currentTaskNotifier.value = task;
+      tasksNotifier.value = List.from(tasksNotifier.value);
+      notifyListeners();
+
+      try {
+        final bytes = await task.downloadAction(
+          task.cancelToken,
+          (received, total) {
+            task.receivedBytes = received;
+            task.totalBytes = total;
+            if (total > 0) {
+              task.progress = (received / total).clamp(0.0, 1.0);
+            }
+            // Обновляем прогресс
+            currentTaskNotifier.value = task;
+            notifyListeners();
+          },
+        );
+
+        final rootContext = ControlPanelApp.navigatorKey.currentContext;
+        if (rootContext != null && rootContext.mounted) {
+          final savePath = await FileSaveHelper.saveFile(
+            context: rootContext,
+            bytes: bytes,
+            fileName: task.fileName,
+          );
+          task.savePath = savePath;
+          task.status = DownloadStatus.completed;
+          tasksNotifier.value = List.from(tasksNotifier.value);
+          notifyListeners();
+
+          if (task.onCompleted != null) {
+            await task.onCompleted!(savePath);
+          }
+
+          if (rootContext.mounted && !kIsWeb) {
+            ScaffoldMessenger.of(rootContext).showSnackBar(
+              SnackBar(
+                content: Text('Файл "${task.fileName}" успешно скачан'),
+                behavior: SnackBarBehavior.floating,
+                backgroundColor: const Color(0xFF10B981),
+                duration: const Duration(seconds: 2),
+                action: (savePath != 'Галерея')
+                    ? SnackBarAction(
+                        label: 'Открыть',
+                        textColor: Colors.white,
+                        onPressed: () {
+                          OpenFile.open(savePath);
+                        },
+                      )
+                    : null,
+              ),
+            );
+          }
+
+          if (savePath != 'Галерея' && !kIsWeb) {
+            final result = await OpenFile.open(savePath);
+            if (result.type != ResultType.done && rootContext.mounted) {
+              debugPrint('Could not auto-open file: ${result.message}');
+            }
+          }
+        }
+      } catch (e) {
+        final wasCancelled = CancelToken.isCancel(e as dynamic) ||
+            e.toString().contains('cancelled_by_user') ||
+            e.toString().contains('Загрузка отменена');
+
+        if (wasCancelled) {
+          task.status = DownloadStatus.cancelled;
+        } else {
+          task.status = DownloadStatus.failed;
+          task.error = e.toString();
+          final rootContext = ControlPanelApp.navigatorKey.currentContext;
+          if (rootContext != null && rootContext.mounted) {
+            ScaffoldMessenger.of(rootContext).showSnackBar(
+              SnackBar(
+                content: Text('Ошибка скачивания "${task.fileName}": $e'),
+                backgroundColor: Colors.red,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        }
+        tasksNotifier.value = List.from(tasksNotifier.value);
+        notifyListeners();
+      }
+
+      // Небольшая пауза между скачиваниями
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
+
+    _isProcessing = false;
+    currentTaskNotifier.value = null;
+
+    final activeRemaining = tasksNotifier.value.where((t) =>
+        t.status == DownloadStatus.queued ||
+        t.status == DownloadStatus.downloading).length;
+
+    if (activeRemaining == 0) {
+      final completed = tasksNotifier.value
+          .where((t) => t.status == DownloadStatus.completed)
+          .length;
+      if (completed > 1) {
+        final rootContext = ControlPanelApp.navigatorKey.currentContext;
+        if (rootContext != null && rootContext.mounted) {
+          ScaffoldMessenger.of(rootContext).showSnackBar(
+            SnackBar(
+              content: Text('Все файлы скачаны (всего $completed)'),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: const Color(0xFF10B981),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+      // Очищаем список после завершения всей очереди
+      tasksNotifier.value = [];
+      isMinimizedNotifier.value = false;
+      notifyListeners();
+    }
   }
 }
 
-/// Модальный диалог прогресса скачивания
-class DownloadProgressDialogWidget extends StatelessWidget {
-  final ActiveDownload active;
-  final VoidCallback onMinimize;
-  final VoidCallback onCancel;
+/// Обертка MaterialApp для отображения модального окна и мини-окна поверх всех экранов
+class DownloadOverlayWrapper extends StatelessWidget {
+  final Widget child;
+  const DownloadOverlayWrapper({super.key, required this.child});
 
-  const DownloadProgressDialogWidget({
-    super.key,
-    required this.active,
-    required this.onMinimize,
-    required this.onCancel,
-  });
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        child,
+        const DownloadOverlayWidget(),
+      ],
+    );
+  }
+}
+
+/// Виджет оверлея скачивания: управляет отображением модального окна или свернутого мини-окна
+class DownloadOverlayWidget extends StatelessWidget {
+  const DownloadOverlayWidget({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<List<DownloadTask>>(
+      valueListenable: DownloadManager.instance.tasksNotifier,
+      builder: (context, tasks, _) {
+        final activeTasks = tasks
+            .where((t) =>
+                t.status == DownloadStatus.queued ||
+                t.status == DownloadStatus.downloading)
+            .toList();
+
+        if (activeTasks.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        return ValueListenableBuilder<bool>(
+          valueListenable: DownloadManager.instance.isMinimizedNotifier,
+          builder: (context, isMinimized, _) {
+            if (isMinimized) {
+              return DownloadMiniWindowWidget(tasks: activeTasks);
+            } else {
+              return DownloadExpandedModalWidget(tasks: activeTasks);
+            }
+          },
+        );
+      },
+    );
+  }
+}
+
+/// Развернутое модальное окно скачивания (с поддержкой очереди из 10+ файлов)
+class DownloadExpandedModalWidget extends StatelessWidget {
+  final List<DownloadTask> tasks;
+
+  const DownloadExpandedModalWidget({super.key, required this.tasks});
 
   String _formatBytes(int bytes) {
     if (bytes <= 0) return '';
@@ -269,382 +422,544 @@ class DownloadProgressDialogWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final mediaQuery = MediaQuery.of(context);
+    final screenSize = mediaQuery.size;
 
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      titlePadding: const EdgeInsets.fromLTRB(20, 16, 12, 0),
-      contentPadding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
-      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      title: Row(
+    final modalWidth = min(screenSize.width - 32, 440.0);
+    final maxHeight = min(screenSize.height * 0.8, 540.0);
+
+    final currentTask = tasks.firstWhere(
+      (t) => t.status == DownloadStatus.downloading,
+      orElse: () => tasks.first,
+    );
+
+    final queuedTasks = tasks.where((t) => t != currentTask).toList();
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        // Нажатие кнопки «Назад» на телефоне сворачивает окно в фон
+        DownloadManager.instance.minimize();
+      },
+      child: Stack(
         children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(Icons.downloading,
-                color: theme.colorScheme.primary, size: 24),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Text(
-              'Загрузка файла',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          // Затемненный фон: нажатие на него сворачивает окно в фон
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => DownloadManager.instance.minimize(),
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.55),
+              ),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.keyboard_arrow_down, size: 24),
-            tooltip: 'Свернуть в фон',
-            onPressed: onMinimize,
-          ),
-          IconButton(
-            icon: const Icon(Icons.close, size: 20),
-            tooltip: 'Отменить',
-            onPressed: onCancel,
-          ),
-        ],
-      ),
-      content: ValueListenableBuilder<double>(
-        valueListenable: active.progress,
-        builder: (context, progress, _) {
-          return ValueListenableBuilder<int>(
-            valueListenable: active.receivedBytes,
-            builder: (context, received, _) {
-              return ValueListenableBuilder<int>(
-                valueListenable: active.totalBytes,
-                builder: (context, total, _) {
-                  final isDeterminate = progress > 0.005 || total > 0;
-                  final receivedStr = _formatBytes(received);
-                  final totalStr = _formatBytes(total);
-
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        active.fileName,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: LinearProgressIndicator(
-                          value: isDeterminate ? progress.clamp(0.0, 1.0) : null,
-                          minHeight: 8,
-                          backgroundColor:
-                              theme.colorScheme.surfaceContainerHighest,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                              theme.colorScheme.primary),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          // Модальная карточка по центру
+          Center(
+            child: Material(
+              color: Colors.transparent,
+              elevation: 16,
+              borderRadius: BorderRadius.circular(24),
+              child: Container(
+                width: modalWidth,
+                constraints: BoxConstraints(maxHeight: maxHeight),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Заголовок
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+                      child: Row(
                         children: [
-                          Text(
-                            isDeterminate
-                                ? (totalStr.isNotEmpty
-                                    ? '$receivedStr / $totalStr'
-                                    : 'Скачивание...')
-                                : 'Подключение...',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: theme.colorScheme.onSurfaceVariant,
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              Icons.downloading,
+                              color: theme.colorScheme.primary,
+                              size: 24,
                             ),
                           ),
-                          Text(
-                            isDeterminate
-                                ? '${(progress * 100).toInt()}%'
-                                : '',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: theme.colorScheme.primary,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Загрузка файлов',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 18,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  tasks.length > 1
+                                      ? 'Всего в очереди: ${tasks.length}'
+                                      : 'Скачивание документа',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
                             ),
+                          ),
+                          // Кнопка свернуть в фон
+                          IconButton(
+                            icon: const Icon(Icons.keyboard_arrow_down, size: 26),
+                            tooltip: 'Свернуть в фон',
+                            onPressed: () => DownloadManager.instance.minimize(),
+                          ),
+                          // Кнопка закрыть / отменить
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 20),
+                            tooltip: 'Отменить все',
+                            onPressed: () => DownloadManager.instance.cancelAll(),
                           ),
                         ],
                       ),
-                    ],
-                  );
-                },
-              );
-            },
-          );
-        },
-      ),
-      actions: [
-        TextButton.icon(
-          icon: const Icon(Icons.close, size: 16),
-          label: const Text('Отмена'),
-          style: TextButton.styleFrom(
-            foregroundColor: theme.colorScheme.error,
-          ),
-          onPressed: onCancel,
-        ),
-        ElevatedButton.icon(
-          icon: const Icon(Icons.arrow_downward_rounded, size: 16),
-          label: const Text('Свернуть в фон'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: theme.colorScheme.primary,
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+                    ),
+                    const Divider(height: 1),
+
+                    // Тело: активное скачивание + очередь
+                    Flexible(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Карточка текущего скачиваемого файла
+                            Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surface.withValues(alpha: 0.7),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                                  width: 1,
+                                ),
+                              ),
+                              child: ValueListenableBuilder<DownloadTask?>(
+                                valueListenable: DownloadManager.instance.currentTaskNotifier,
+                                builder: (context, activeTask, _) {
+                                  final task = activeTask ?? currentTask;
+                                  final isDeterminate = task.progress > 0.005 || task.totalBytes > 0;
+                                  final receivedStr = _formatBytes(task.receivedBytes);
+                                  final totalStr = _formatBytes(task.totalBytes);
+                                  final pct = (task.progress * 100).toInt();
+
+                                  return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              task.fileName,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(Icons.close, size: 18),
+                                            tooltip: 'Отменить этот файл',
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                            onPressed: () => DownloadManager.instance.cancelTask(task),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: LinearProgressIndicator(
+                                          value: isDeterminate ? task.progress.clamp(0.0, 1.0) : null,
+                                          minHeight: 8,
+                                          backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                                          valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            isDeterminate
+                                                ? (totalStr.isNotEmpty ? '$receivedStr / $totalStr' : 'Скачивание...')
+                                                : 'Подключение...',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: theme.colorScheme.onSurfaceVariant,
+                                            ),
+                                          ),
+                                          Text(
+                                            isDeterminate ? '$pct%' : '',
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.bold,
+                                              color: theme.colorScheme.primary,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
+                            ),
+
+                            // Список файлов в очереди
+                            if (queuedTasks.isNotEmpty) ...[
+                              const SizedBox(height: 16),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.queue,
+                                    size: 16,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'В очереди (${queuedTasks.length}):',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: theme.colorScheme.onSurface,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              ListView.separated(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: queuedTasks.length,
+                                separatorBuilder: (_, __) => const SizedBox(height: 6),
+                                itemBuilder: (context, index) {
+                                  final queued = queuedTasks[index];
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: theme.colorScheme.surface.withValues(alpha: 0.4),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(6),
+                                          decoration: BoxDecoration(
+                                            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Text(
+                                            '${index + 2}',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                              color: theme.colorScheme.onSurfaceVariant,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                queued.fileName,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                              Text(
+                                                'В очереди ожидания',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: theme.colorScheme.onSurfaceVariant,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.close, size: 16),
+                                          tooltip: 'Убрать из очереди',
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                          onPressed: () => DownloadManager.instance.cancelTask(queued),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const Divider(height: 1),
+
+                    // Кнопки действий
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          TextButton.icon(
+                            icon: const Icon(Icons.close, size: 16),
+                            label: const Text('Отменить все'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: theme.colorScheme.error,
+                            ),
+                            onPressed: () => DownloadManager.instance.cancelAll(),
+                          ),
+                          ElevatedButton.icon(
+                            icon: const Icon(Icons.arrow_downward_rounded, size: 16),
+                            label: const Text('Свернуть в фон'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: theme.colorScheme.primary,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            onPressed: () => DownloadManager.instance.minimize(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
-          onPressed: onMinimize,
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
-/// Обертка MaterialApp для отображения мини-окна поверх всех экранов
-class DownloadOverlayWrapper extends StatelessWidget {
-  final Widget child;
-  const DownloadOverlayWrapper({super.key, required this.child});
+/// Свернутое плавающее мини-окошко скачивания (перетаскиваемое, не закрывающее экран)
+class DownloadMiniWindowWidget extends StatefulWidget {
+  final List<DownloadTask> tasks;
+
+  const DownloadMiniWindowWidget({super.key, required this.tasks});
 
   @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        child,
-        const DownloadMiniWindowOverlay(),
-      ],
-    );
-  }
+  State<DownloadMiniWindowWidget> createState() => _DownloadMiniWindowWidgetState();
 }
 
-/// Плавающее маленькое окошко скачивания при сворачивании
-class DownloadMiniWindowOverlay extends StatefulWidget {
-  const DownloadMiniWindowOverlay({super.key});
-
-  @override
-  State<DownloadMiniWindowOverlay> createState() =>
-      _DownloadMiniWindowOverlayState();
-}
-
-class _DownloadMiniWindowOverlayState extends State<DownloadMiniWindowOverlay> {
+class _DownloadMiniWindowWidgetState extends State<DownloadMiniWindowWidget> {
   Offset? _position;
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ActiveDownload?>(
-      valueListenable: DownloadManager.instance.activeDownload,
-      builder: (context, active, _) {
-        if (active == null) {
-          _position = null;
-          return const SizedBox.shrink();
-        }
+    final mediaQuery = MediaQuery.of(context);
+    final screenSize = mediaQuery.size;
+    final topPadding = mediaQuery.padding.top;
+    final bottomPadding = mediaQuery.padding.bottom;
 
-        return ValueListenableBuilder<bool>(
-          valueListenable: active.isMinimized,
-          builder: (context, isMinimized, _) {
-            if (!isMinimized) {
-              return const SizedBox.shrink();
-            }
+    final cardWidth = (screenSize.width - 32).clamp(290.0, 360.0);
+    final cardHeight = widget.tasks.length > 1 ? 72.0 : 64.0;
 
-            final mediaQuery = MediaQuery.of(context);
-            final screenSize = mediaQuery.size;
-            final topPadding = mediaQuery.padding.top;
-            final bottomPadding = mediaQuery.padding.bottom;
+    // По умолчанию размещаем над нижней панелью навигации
+    _position ??= Offset(
+      (screenSize.width - cardWidth) / 2,
+      screenSize.height - bottomPadding - cardHeight - 88,
+    );
 
-            final cardWidth = (screenSize.width - 32).clamp(280.0, 360.0);
-            const cardHeight = 64.0;
+    const minX = 12.0;
+    final maxX = screenSize.width - cardWidth - 12.0;
+    final minY = topPadding + 12.0;
+    final maxY = screenSize.height - bottomPadding - cardHeight - 12.0;
 
-            // По умолчанию размещаем внизу экрана над таб-баром
-            _position ??= Offset(
-              (screenSize.width - cardWidth) / 2,
-              screenSize.height - bottomPadding - cardHeight - 88,
+    final clampedX = _position!.dx.clamp(minX, maxX);
+    final clampedY = _position!.dy.clamp(minY, maxY);
+
+    final theme = Theme.of(context);
+
+    return Positioned(
+      left: clampedX,
+      top: clampedY,
+      child: GestureDetector(
+        onPanUpdate: (details) {
+          setState(() {
+            _position = Offset(
+              clampedX + details.delta.dx,
+              clampedY + details.delta.dy,
             );
-
-            // Клампинг границ экрана
-            const minX = 12.0;
-            final maxX = screenSize.width - cardWidth - 12.0;
-            final minY = topPadding + 12.0;
-            final maxY = screenSize.height - bottomPadding - cardHeight - 12.0;
-
-            final clampedX = _position!.dx.clamp(minX, maxX);
-            final clampedY = _position!.dy.clamp(minY, maxY);
-
-            final theme = Theme.of(context);
-
-            return Positioned(
-              left: clampedX,
-              top: clampedY,
-              child: GestureDetector(
-                onPanUpdate: (details) {
-                  setState(() {
-                    _position = Offset(
-                      clampedX + details.delta.dx,
-                      clampedY + details.delta.dy,
-                    );
-                  });
-                },
-                child: Material(
-                  color: Colors.transparent,
-                  elevation: 10,
-                  shadowColor: Colors.black.withValues(alpha: 0.35),
-                  borderRadius: BorderRadius.circular(16),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    onTap: () {
-                      DownloadManager.instance.expandDownload(context);
-                    },
-                    child: Container(
-                      width: cardWidth,
-                      height: cardHeight,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color:
-                              theme.colorScheme.primary.withValues(alpha: 0.4),
-                          width: 1.2,
-                        ),
-                      ),
-                      child: ValueListenableBuilder<double>(
-                        valueListenable: active.progress,
-                        builder: (context, progress, _) {
-                          return ValueListenableBuilder<int>(
-                            valueListenable: active.totalBytes,
-                            builder: (context, total, _) {
-                              final isDeterminate =
-                                  progress > 0.005 || total > 0;
-                              final pct = (progress * 100).toInt();
-
-                              return Row(
-                                children: [
-                                  // Кольцевой индикатор с иконкой документа в центре
-                                  SizedBox(
-                                    width: 36,
-                                    height: 36,
-                                    child: Stack(
-                                      alignment: Alignment.center,
-                                      children: [
-                                        CircularProgressIndicator(
-                                          value: isDeterminate
-                                              ? progress.clamp(0.0, 1.0)
-                                              : null,
-                                          strokeWidth: 3,
-                                          backgroundColor: theme
-                                              .colorScheme.outlineVariant
-                                              .withValues(alpha: 0.3),
-                                          valueColor:
-                                              AlwaysStoppedAnimation<Color>(
-                                            theme.colorScheme.primary,
-                                          ),
-                                        ),
-                                        Icon(
-                                          Icons.description_outlined,
-                                          size: 16,
-                                          color: theme.colorScheme.primary,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  // Название и прогресс
-                                  Expanded(
-                                    child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              child: Text(
-                                                active.fileName,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 6),
-                                            Text(
-                                              isDeterminate ? '$pct%' : '...',
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.bold,
-                                                color:
-                                                    theme.colorScheme.primary,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 5),
-                                        ClipRRect(
-                                          borderRadius:
-                                              BorderRadius.circular(4),
-                                          child: LinearProgressIndicator(
-                                            value: isDeterminate
-                                                ? progress.clamp(0.0, 1.0)
-                                                : null,
-                                            minHeight: 4,
-                                            backgroundColor: theme
-                                                .colorScheme.surface
-                                                .withValues(alpha: 0.5),
-                                            valueColor:
-                                                AlwaysStoppedAnimation<Color>(
-                                              theme.colorScheme.primary,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  // Кнопка развернуть
-                                  IconButton(
-                                    icon: const Icon(Icons.open_in_full,
-                                        size: 16),
-                                    tooltip: 'Развернуть',
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(
-                                        minWidth: 28, minHeight: 28),
-                                    onPressed: () {
-                                      DownloadManager.instance
-                                          .expandDownload(context);
-                                    },
-                                  ),
-                                  // Кнопка отмены
-                                  IconButton(
-                                    icon: const Icon(Icons.close, size: 18),
-                                    tooltip: 'Отменить',
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(
-                                        minWidth: 28, minHeight: 28),
-                                    onPressed: () {
-                                      DownloadManager.instance
-                                          .cancelDownload(showToast: true);
-                                    },
-                                  ),
-                                ],
-                              );
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ),
+          });
+        },
+        child: Material(
+          color: Colors.transparent,
+          elevation: 12,
+          shadowColor: Colors.black.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () {
+              // Разворачиваем модальное окно обратно
+              DownloadManager.instance.expand();
+            },
+            child: Container(
+              width: cardWidth,
+              height: cardHeight,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.45),
+                  width: 1.2,
                 ),
               ),
-            );
-          },
-        );
-      },
+              child: ValueListenableBuilder<DownloadTask?>(
+                valueListenable: DownloadManager.instance.currentTaskNotifier,
+                builder: (context, activeTask, _) {
+                  final task = activeTask ?? widget.tasks.first;
+                  final isDeterminate = task.progress > 0.005 || task.totalBytes > 0;
+                  final pct = (task.progress * 100).toInt();
+                  final queueCount = widget.tasks.length;
+
+                  return Row(
+                    children: [
+                      // Кольцевой индикатор с иконкой
+                      SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            CircularProgressIndicator(
+                              value: isDeterminate ? task.progress.clamp(0.0, 1.0) : null,
+                              strokeWidth: 3,
+                              backgroundColor: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                              valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                            ),
+                            Icon(
+                              Icons.description_outlined,
+                              size: 16,
+                              color: theme.colorScheme.primary,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      // Название и прогресс
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    task.fileName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  isDeterminate ? '$pct%' : '...',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(
+                                value: isDeterminate ? task.progress.clamp(0.0, 1.0) : null,
+                                minHeight: 4,
+                                backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.5),
+                                valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                              ),
+                            ),
+                            if (queueCount > 1) ...[
+                              const SizedBox(height: 3),
+                              Text(
+                                '+${queueCount - 1} в очереди',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      // Кнопка развернуть
+                      IconButton(
+                        icon: const Icon(Icons.open_in_full, size: 16),
+                        tooltip: 'Развернуть',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                        onPressed: () {
+                          DownloadManager.instance.expand();
+                        },
+                      ),
+                      // Кнопка отмены текущего
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        tooltip: 'Отменить',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                        onPressed: () {
+                          DownloadManager.instance.cancelTask(task);
+                        },
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
