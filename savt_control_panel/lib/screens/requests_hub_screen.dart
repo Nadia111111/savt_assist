@@ -206,7 +206,7 @@ class _RequestsHubScreenState extends State<RequestsHubScreen>
       ),
       body: DraggableFloatingPillOverlay(
         storageKey: 'fab_pos_new_request',
-        heroTag: 'hero_requests_fab',
+        heroTag: 'hero_new_request_fab',
         icon: Icons.add,
         label: isServiceTab ? 'Новая заявка' : 'Подать рекламацию',
         estimatedWidth: isServiceTab ? 162.0 : 196.0,

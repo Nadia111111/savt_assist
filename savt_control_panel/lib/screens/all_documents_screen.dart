@@ -8,6 +8,7 @@ import '../services/file_save_helper.dart';
 import '../utils/download_helper.dart';
 import '../widgets/gradient_scaffold.dart';
 import '../widgets/skeletons.dart';
+import '../widgets/document_action_button.dart';
 import '../main.dart';
 
 class AllDocumentsScreen extends StatefulWidget {
@@ -396,6 +397,9 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
     final fileUrl = doc['file_url'] ?? doc['url'];
     final fileName = FileSaveHelper.ensureExtension(doc['title'] ?? 'document', fileUrl);
     final isDownloaded = _downloadedFileNames.contains(fileName);
+    final docId = doc['id'] ?? 0;
+    final isDownloading = DownloadManager.instance.isDocDownloading(docId);
+    final isQueued = DownloadManager.instance.isDocQueued(docId);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -423,31 +427,17 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
               Text('${(doc['file_size_bytes'] / 1024).round()} KB', style: const TextStyle(fontSize: 11)),
           ],
         ),
-        trailing: hasAccess
-            ? (isDownloaded && !kIsWeb
-                ? OutlinedButton.icon(
-                    icon: const Icon(Icons.visibility, size: 16),
-                    label: const Text('Просмотр'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: theme.colorScheme.primary,
-                      side: BorderSide(color: theme.colorScheme.primary),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    ),
-                    onPressed: () => _openDownloadedDocument(fileName),
-                  )
-                : ElevatedButton(
-                    onPressed: () => _downloadDocument(doc),
-                    child: const Text('Скачать'),
-                  ))
-            : accessRequested
-                ? const OutlinedButton(
-                    onPressed: null,
-                    child: Text('Запрос отправлен'),
-                  )
-                : OutlinedButton(
-                    onPressed: () => _requestDocumentAccess(doc),
-                    child: const Text('Доступ'),
-                  ),
+        trailing: DocumentActionButton(
+          hasAccess: hasAccess,
+          isDownloaded: isDownloaded && !kIsWeb,
+          isDownloading: isDownloading,
+          isQueued: isQueued,
+          accessRequested: accessRequested,
+          onDownload: () => _downloadDocument(doc),
+          onOpen: () => _openDownloadedDocument(fileName),
+          onRequestAccess: () => _requestDocumentAccess(doc),
+          onShowQueue: () => DownloadManager.instance.expand(),
+        ),
       ),
     );
   }

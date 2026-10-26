@@ -79,6 +79,8 @@ class _DraggableFloatingPillOverlayState
       _loadPosition();
     }
     if (oldWidget.label != widget.label) {
+      _measuredWidth = null;
+      _measuredHeight = null;
       WidgetsBinding.instance.addPostFrameCallback((_) => _measureButton());
     }
   }
@@ -141,8 +143,8 @@ class _DraggableFloatingPillOverlayState
           );
         }
 
-        final double currentX = _currentPixelPosition?.dx ?? maxX;
-        final double currentY = _currentPixelPosition?.dy ?? maxY;
+        final double currentX = (_currentPixelPosition?.dx ?? maxX).clamp(minX, maxX);
+        final double currentY = (_currentPixelPosition?.dy ?? maxY).clamp(minY, maxY);
 
         return Stack(
           children: [
@@ -156,6 +158,7 @@ class _DraggableFloatingPillOverlayState
                   maxX: maxX,
                   minY: minY,
                   maxY: maxY,
+                  maxPillWidth: constraints.maxWidth - (margin * 2),
                 ),
               ),
           ],
@@ -169,41 +172,95 @@ class _DraggableFloatingPillOverlayState
     required double maxX,
     required double minY,
     required double maxY,
+    required double maxPillWidth,
   }) {
     final theme = Theme.of(context);
-    final bgColor = widget.backgroundColor ?? theme.colorScheme.primary;
-    final fgColor = widget.foregroundColor ?? theme.colorScheme.onPrimary;
+    
+    // Подбираем яркий градиент и свечение
+    final List<Color> gradientColors;
+    final Color glowColor;
+
+    if (widget.backgroundColor != null) {
+      gradientColors = [
+        widget.backgroundColor!,
+        widget.backgroundColor!.withValues(alpha: 0.85),
+      ];
+      glowColor = widget.backgroundColor!;
+    } else if (widget.label.toLowerCase().contains('рекламац')) {
+      // Яркий кораллово-огненный градиент для рекламаций
+      gradientColors = const [Color(0xFFFF5722), Color(0xFFE64A19)];
+      glowColor = const Color(0xFFEA580C);
+    } else if (widget.label.toLowerCase().contains('новая заявка')) {
+      // Электрик лазурный градиент для новой заявки
+      gradientColors = const [Color(0xFF0EA5E9), Color(0xFF0284C7)];
+      glowColor = const Color(0xFF0284C7);
+    } else {
+      // Королевский синий ультрамарин для "Заявки" (Хаб)
+      gradientColors = const [Color(0xFF3B82F6), Color(0xFF1D4ED8)];
+      glowColor = const Color(0xFF2563EB);
+    }
+
+    final fgColor = widget.foregroundColor ?? Colors.white;
 
     Widget pill = KeyedSubtree(
       key: _buttonKey,
-      child: Material(
-        elevation: _isDragging ? 12 : 5,
-        shadowColor: Colors.black.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(24),
-        color: bgColor,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            color: bgColor,
+      child: Container(
+        constraints: BoxConstraints(maxWidth: maxPillWidth),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(26),
+          gradient: LinearGradient(
+            colors: gradientColors,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                widget.icon,
-                color: fgColor,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                widget.label,
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: fgColor,
-                  fontWeight: FontWeight.w600,
+          boxShadow: [
+            BoxShadow(
+              color: glowColor.withValues(alpha: _isDragging ? 0.55 : 0.38),
+              blurRadius: _isDragging ? 18 : 12,
+              offset: Offset(0, _isDragging ? 8 : 4),
+            ),
+          ],
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.3),
+            width: 1.2,
+          ),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.22),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    widget.icon,
+                    color: fgColor,
+                    size: 18,
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    widget.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: fgColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

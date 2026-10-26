@@ -37,7 +37,13 @@ class OfflineAwareButton extends StatelessWidget {
                 children: [
                   if (icon != null) Icon(icon, size: 20),
                   if (icon != null) const SizedBox(width: 8),
-                  Text(text),
+                  Flexible(
+                    child: Text(
+                      text,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                   if (!isOnline) ...[
                     const SizedBox(width: 8),
                     const Icon(Icons.wifi_off, size: 16),

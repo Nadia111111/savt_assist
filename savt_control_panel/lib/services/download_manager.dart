@@ -735,27 +735,80 @@ class DownloadExpandedModalWidget extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          TextButton.icon(
-                            icon: const Icon(Icons.close, size: 16),
-                            label: const Text('Отменить все'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: theme.colorScheme.error,
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.close_rounded, size: 16, color: Colors.red),
+                              label: const Text(
+                                'Отменить все',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.red,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                side: BorderSide(color: Colors.red.withValues(alpha: 0.35)),
+                                backgroundColor: Colors.red.withValues(alpha: 0.06),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                              ),
+                              onPressed: () => DownloadManager.instance.cancelAll(),
                             ),
-                            onPressed: () => DownloadManager.instance.cancelAll(),
                           ),
-                          ElevatedButton.icon(
-                            icon: const Icon(Icons.arrow_downward_rounded, size: 16),
-                            label: const Text('Свернуть в фон'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: theme.colorScheme.primary,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Container(
+                              height: 44,
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(14),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFF2563EB).withValues(alpha: 0.35),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
+                              ),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(14),
+                                  onTap: () => DownloadManager.instance.minimize(),
+                                  child: const Padding(
+                                    padding: EdgeInsets.symmetric(horizontal: 10),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: Colors.white),
+                                        SizedBox(width: 6),
+                                        Flexible(
+                                          child: Text(
+                                            'Свернуть',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
-                            onPressed: () => DownloadManager.instance.minimize(),
                           ),
                         ],
                       ),
@@ -931,26 +984,39 @@ class _DownloadMiniWindowWidgetState extends State<DownloadMiniWindowWidget> {
                           ],
                         ),
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 8),
                       // Кнопка развернуть
-                      IconButton(
-                        icon: const Icon(Icons.open_in_full, size: 16),
-                        tooltip: 'Развернуть',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                        onPressed: () {
-                          DownloadManager.instance.expand();
-                        },
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          icon: Icon(Icons.open_in_full_rounded, size: 15, color: theme.colorScheme.primary),
+                          tooltip: 'Развернуть',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          onPressed: () => DownloadManager.instance.expand(),
+                        ),
                       ),
+                      const SizedBox(width: 6),
                       // Кнопка отмены текущего
-                      IconButton(
-                        icon: const Icon(Icons.close, size: 18),
-                        tooltip: 'Отменить',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                        onPressed: () {
-                          DownloadManager.instance.cancelTask(task);
-                        },
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: Colors.red.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.close_rounded, size: 16, color: Colors.red),
+                          tooltip: 'Отменить',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          onPressed: () => DownloadManager.instance.cancelTask(task),
+                        ),
                       ),
                     ],
                   );

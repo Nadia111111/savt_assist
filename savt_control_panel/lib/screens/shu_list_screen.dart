@@ -650,7 +650,7 @@ class ShuListScreenState extends State<ShuListScreen>
             ),
       body: DraggableFloatingPillOverlay(
         storageKey: 'fab_pos_requests',
-        heroTag: 'hero_requests_fab',
+        heroTag: 'hero_requests_fab_projects',
         icon: Icons.assignment_outlined,
         label: 'Заявки',
         estimatedWidth: 116.0,

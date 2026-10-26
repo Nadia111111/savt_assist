@@ -12,6 +12,7 @@ import '../widgets/gradient_scaffold.dart';
 import '../widgets/animated_card.dart';
 import '../widgets/skeletons.dart';
 import '../widgets/responsive_layout.dart';
+import '../widgets/document_action_button.dart';
 import 'navigation_container.dart';
 import '../main.dart';
 
@@ -794,17 +795,23 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
             final docId = doc['id'] ?? 0;
             final isDownloading = DownloadManager.instance.isDocDownloading(docId);
             final isQueued = DownloadManager.instance.isDocQueued(docId);
+            final currentTask = DownloadManager.instance.currentTaskNotifier.value;
+            final taskProgress = (isDownloading && currentTask != null && currentTask.docId == docId)
+                ? currentTask.progress
+                : null;
 
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 onTap: hasAccess
                     ? () => (isDownloaded && !kIsWeb)
                         ? _openDownloadedDocument(fileName)
                         : (isDownloading || isQueued)
-                            ? null
+                            ? DownloadManager.instance.expand()
                             : _downloadDocument(doc)
-                    : null,
+                    : () => _requestDocumentAccess(doc),
                 leading: Container(
                   width: 44,
                   height: 44,
@@ -817,8 +824,12 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
                 title: Row(
                   children: [
                     Expanded(
-                      child: Text(doc['title'] ?? 'Документ',
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      child: Text(
+                        doc['title'] ?? 'Документ',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                      ),
                     ),
                     if (!hasAccess) ...[
                       const SizedBox(width: 8),
@@ -826,46 +837,27 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
                     ],
                   ],
                 ),
-                subtitle: Text(doc['file_size_bytes'] != null
-                    ? ' KB'
-                    : ''),
-                trailing: hasAccess
-                    ? (isDownloaded && !kIsWeb
-                        ? OutlinedButton.icon(
-                            icon: const Icon(Icons.visibility, size: 16),
-                            label: const Text('Просмотр'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Theme.of(context).colorScheme.primary,
-                              side: BorderSide(
-                                  color: Theme.of(context).colorScheme.primary),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 8),
-                            ),
-                            onPressed: () => _openDownloadedDocument(fileName),
-                          )
-                        : isDownloading
-                            ? const ElevatedButton(
-                                onPressed: null,
-                                child: Text('Загрузка...'),
-                              )
-                            : isQueued
-                                ? const OutlinedButton(
-                                    onPressed: null,
-                                    child: Text('В очереди'),
-                                  )
-                                : ElevatedButton(
-                                    onPressed: () => _downloadDocument(doc),
-                                    child: const Text('Скачать'),
-                                  ))
-                    : accessRequested
-                        ? const OutlinedButton(
-                            onPressed: null,
-                            child: Text('Запрос отправлен'),
-                          )
-                        : OutlinedButton(
-                            onPressed: () => _requestDocumentAccess(doc),
-                            child: const Text('Запросить доступ'),
-                          ),
+                subtitle: Text(
+                  doc['file_size_bytes'] != null
+                      ? '${(doc['file_size_bytes'] / 1024).round()} KB'
+                      : (doc['file_type'] ?? ''),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                trailing: DocumentActionButton(
+                  hasAccess: hasAccess,
+                  isDownloaded: isDownloaded && !kIsWeb,
+                  isDownloading: isDownloading,
+                  isQueued: isQueued,
+                  accessRequested: accessRequested,
+                  progress: taskProgress,
+                  onDownload: () => _downloadDocument(doc),
+                  onOpen: () => _openDownloadedDocument(fileName),
+                  onRequestAccess: () => _requestDocumentAccess(doc),
+                  onShowQueue: () => DownloadManager.instance.expand(),
+                ),
               ),
             );
           },
