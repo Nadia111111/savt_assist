@@ -344,6 +344,7 @@ class _RequestsHubScreenState extends State<RequestsHubScreen>
   }
 
   Widget _buildServiceFilterChips(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -353,6 +354,7 @@ class _RequestsHubScreenState extends State<RequestsHubScreen>
           return Padding(
             padding: const EdgeInsets.only(right: 8),
             child: FilterChip(
+              showCheckmark: false,
               label: Text(f['label']!),
               selected: isSelected,
               onSelected: (_) {
@@ -361,7 +363,7 @@ class _RequestsHubScreenState extends State<RequestsHubScreen>
               backgroundColor: theme.colorScheme.surfaceContainerLow,
               selectedColor: theme.colorScheme.primary.withValues(alpha: 0.15),
               labelStyle: TextStyle(
-                color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                color: isSelected ? (isDark ? Colors.white : theme.colorScheme.primary) : theme.colorScheme.onSurface,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                 fontSize: 12,
               ),
@@ -377,6 +379,7 @@ class _RequestsHubScreenState extends State<RequestsHubScreen>
   }
 
   Widget _buildReclamationFilterChips(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -386,6 +389,7 @@ class _RequestsHubScreenState extends State<RequestsHubScreen>
           return Padding(
             padding: const EdgeInsets.only(right: 8),
             child: FilterChip(
+              showCheckmark: false,
               label: Text(f['label']!),
               selected: isSelected,
               onSelected: (_) {
@@ -394,7 +398,7 @@ class _RequestsHubScreenState extends State<RequestsHubScreen>
               backgroundColor: theme.colorScheme.surfaceContainerLow,
               selectedColor: theme.colorScheme.primary.withValues(alpha: 0.15),
               labelStyle: TextStyle(
-                color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurface,
+                color: isSelected ? (isDark ? Colors.white : theme.colorScheme.primary) : theme.colorScheme.onSurface,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                 fontSize: 12,
               ),

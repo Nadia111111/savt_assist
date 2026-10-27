@@ -1101,8 +1101,8 @@ class ShuListScreenState extends State<ShuListScreen>
                             child: Container(
                               width: 8,
                               height: 8,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF991B1B),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.error,
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -1336,13 +1336,14 @@ class ShuListScreenState extends State<ShuListScreen>
   }
 
   Color _getWarrantyColor(String status) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     switch (status) {
       case 'active':
         return const Color(0xFF10B981);
       case 'expiring_soon':
         return const Color(0xFFF59E0B);
       case 'expired':
-        return const Color(0xFF991B1B);
+        return isDark ? const Color(0xFFF87171) : const Color(0xFFDC2626);
       default:
         return Colors.grey;
     }

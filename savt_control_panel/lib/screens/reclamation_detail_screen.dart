@@ -374,6 +374,7 @@ class _ReclamationDetailScreenState extends State<ReclamationDetailScreen> {
   Widget _buildStatusHighlightCard() {
     final detail = _detail!;
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     // 1. in_progress -> ответственный и рабочий телефон
     if (detail.status == 'in_progress') {
@@ -447,7 +448,7 @@ class _ReclamationDetailScreenState extends State<ReclamationDetailScreen> {
                       const SizedBox(width: 8),
                       Text(
                         detail.responsibleName!,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontWeight: FontWeight.w600, fontSize: 14),
                       ),
                     ],
@@ -462,16 +463,16 @@ class _ReclamationDetailScreenState extends State<ReclamationDetailScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Row(
                       children: [
-                        const Icon(Icons.phone,
-                            size: 16, color: Color(0xFF0a7ac2)),
+                        Icon(Icons.phone, size: 16, color: isDark ? Colors.white : const Color(0xFF0a7ac2)),
                         const SizedBox(width: 8),
                         Text(
                           detail.responsiblePhone!,
-                          style: const TextStyle(
-                            color: Color(0xFF0a7ac2),
+                          style: TextStyle(
+                            color: isDark ? Colors.white : const Color(0xFF0a7ac2),
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
                             decoration: TextDecoration.underline,
+                            decorationColor: isDark ? Colors.white : const Color(0xFF0a7ac2),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -504,7 +505,9 @@ class _ReclamationDetailScreenState extends State<ReclamationDetailScreen> {
     // 2. rejected or invalid -> причина отклонения
     if (detail.status == 'rejected' || detail.status == 'invalid') {
       final isInvalid = detail.status == 'invalid';
-      final color = isInvalid ? const Color(0xFFEA580C) : const Color(0xFFDC2626);
+      final color = isInvalid
+          ? (isDark ? const Color(0xFFFB923C) : const Color(0xFFEA580C))
+          : (isDark ? const Color(0xFFF87171) : const Color(0xFFDC2626));
       return Container(
         margin: const EdgeInsets.only(bottom: AppSpacing.base),
         padding: const EdgeInsets.all(AppSpacing.base),
@@ -598,7 +601,7 @@ class _ReclamationDetailScreenState extends State<ReclamationDetailScreen> {
               const SizedBox(height: 10),
               Text(
                 detail.resolutionComment!,
-                style: const TextStyle(fontSize: 13, height: 1.4),
+                style: TextStyle(fontSize: 13, height: 1.4),
               ),
             ],
             if (detail.rootCause != null && detail.rootCause!.isNotEmpty) ...[
@@ -644,7 +647,7 @@ class _ReclamationDetailScreenState extends State<ReclamationDetailScreen> {
                                   .isNotEmpty
                           ? 'Шкаф управления (зав. № ${detail.objectDetails!['serial_number']})'
                           : 'Шкаф управления'),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
                   ),
@@ -685,7 +688,7 @@ class _ReclamationDetailScreenState extends State<ReclamationDetailScreen> {
                     Expanded(
                       child: Text(
                         e.value.toString(),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 13,
                         ),
@@ -713,7 +716,7 @@ class _ReclamationDetailScreenState extends State<ReclamationDetailScreen> {
                   Expanded(
                     child: Text(
                       'Проект: ${detail.projectName!}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
                       ),
@@ -747,7 +750,7 @@ class _ReclamationDetailScreenState extends State<ReclamationDetailScreen> {
                     Expanded(
                       child: Text(
                         e.value.toString(),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 13,
                         ),
@@ -848,13 +851,13 @@ class _ReclamationDetailScreenState extends State<ReclamationDetailScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.08),
+                color: theme.colorScheme.error.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
                 detail.errorCodes!,
-                style: const TextStyle(
-                  color: Colors.red,
+                style: TextStyle(
+                  color: theme.colorScheme.error,
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
                 ),
@@ -986,7 +989,7 @@ class _ReclamationDetailScreenState extends State<ReclamationDetailScreen> {
                           att.fileName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 13,
                           ),
@@ -1049,6 +1052,7 @@ class _ReclamationDetailScreenState extends State<ReclamationDetailScreen> {
     IconData? icon,
   }) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1069,7 +1073,7 @@ class _ReclamationDetailScreenState extends State<ReclamationDetailScreen> {
             child: Row(
               children: [
                 if (icon != null) ...[
-                  Icon(icon, size: 14, color: theme.colorScheme.primary),
+                  Icon(icon, size: 14, color: isAction ? (isDark ? Colors.white : theme.colorScheme.primary) : theme.colorScheme.primary),
                   const SizedBox(width: 4),
                 ],
                 Expanded(
@@ -1078,11 +1082,9 @@ class _ReclamationDetailScreenState extends State<ReclamationDetailScreen> {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: isAction
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.onSurface,
-                      decoration:
-                          isAction ? TextDecoration.underline : null,
+                      color: isAction ? (isDark ? Colors.white : theme.colorScheme.primary) : theme.colorScheme.onSurface,
+                      decoration: isAction ? TextDecoration.underline : null,
+                      decorationColor: isAction ? (isDark ? Colors.white : theme.colorScheme.primary) : null,
                     ),
                   ),
                 ),
@@ -1124,7 +1126,7 @@ class _ReclamationDetailScreenState extends State<ReclamationDetailScreen> {
               const SizedBox(width: 8),
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 14,
                 ),

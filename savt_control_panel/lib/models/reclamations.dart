@@ -90,7 +90,7 @@ class ReclamationsItem {
       case 'resolved':
         return const Color(0xFF10B981); // Изумрудно-зеленый
       case 'rejected':
-        return const Color(0xFFDC2626); // Красный
+        return const Color(0xFFF87171); // Мягкий красный
       case 'invalid':
         return const Color(0xFFEA580C); // Кораллово-оранжевый
       default:
@@ -306,7 +306,7 @@ class ReclamationsDetail {
       case 'resolved':
         return const Color(0xFF10B981);
       case 'rejected':
-        return const Color(0xFFDC2626);
+        return const Color(0xFFF87171);
       case 'invalid':
         return const Color(0xFFEA580C);
       default:

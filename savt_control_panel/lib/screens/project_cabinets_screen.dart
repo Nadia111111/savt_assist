@@ -1175,13 +1175,14 @@ class _ProjectCabinetsScreenState extends State<ProjectCabinetsScreen>
   }
 
   Color _getWarrantyColor(String status) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     switch (status) {
       case 'active':
         return AppColors.success;
       case 'expiring_soon':
         return AppColors.warning;
       case 'expired':
-        return AppColors.error;
+        return isDark ? AppColors.errorDark : AppColors.error;
       default:
         return const Color(0xFF64748B);
     }

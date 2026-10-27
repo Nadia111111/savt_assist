@@ -434,13 +434,14 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
 
   Color get _warrantyColor {
     final status = _cabinetDetail?['warranty_status'];
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     switch (status) {
       case 'active':
         return const Color(0xFF10B981);
       case 'expiring_soon':
         return const Color(0xFFF59E0B);
       case 'expired':
-        return const Color(0xFF991B1B);
+        return isDark ? const Color(0xFFF87171) : const Color(0xFFDC2626);
       default:
         return Colors.grey;
     }
@@ -931,7 +932,9 @@ class _TelemetryAlarmCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final timeStr = DateFormat('dd.MM.yyyy HH:mm').format(alarm.updatedAt);
+    final errorColor = isDark ? const Color(0xFFF87171) : const Color(0xFFDC2626);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -944,11 +947,11 @@ class _TelemetryAlarmCard extends StatelessWidget {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: theme.colorScheme.errorContainer,
+                color: errorColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(Icons.warning_amber_rounded,
-                  size: 22, color: theme.colorScheme.error),
+                  size: 22, color: errorColor),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -981,13 +984,13 @@ class _TelemetryAlarmCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: theme.colorScheme.errorContainer,
+                color: errorColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
                 '${alarm.value}',
                 style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.colorScheme.error,
+                  color: errorColor,
                   fontWeight: FontWeight.w700,
                 ),
               ),

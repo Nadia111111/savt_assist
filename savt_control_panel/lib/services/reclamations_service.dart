@@ -23,7 +23,7 @@ class ReclamationsService {
     String? ttnNumber,
     required String contactName,
     required String contactPhone,
-    required String contactEmail,
+    String? contactEmail,
     String? customerName,
     List<Map<String, dynamic>>? attachments,
   }) async {
@@ -33,7 +33,8 @@ class ReclamationsService {
         'description': description,
         'contact_name': contactName,
         'contact_phone': contactPhone,
-        'contact_email': contactEmail,
+        if (contactEmail != null && contactEmail.trim().isNotEmpty)
+          'contact_email': contactEmail.trim(),
       };
 
       if (objectDetails != null && objectDetails.isNotEmpty) {

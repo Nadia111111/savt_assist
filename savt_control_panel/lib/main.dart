@@ -458,7 +458,7 @@ class _ControlPanelAppState extends State<ControlPanelApp> {
     const surface = Color(0xFFF8FAFC);
     const onSurface = Color(0xFF1F2937);
     const outline = Color(0xFFE2E8F0);
-    const error = Color(0xFF991B1B);
+    const error = Color(0xFFDC2626);
     final cs = ColorScheme.fromSeed(
       seedColor: primary,
       brightness: Brightness.light,
@@ -590,7 +590,7 @@ class _ControlPanelAppState extends State<ControlPanelApp> {
     const surface = Color(0xFF0B1120);
     const onSurface = Color(0xFFFFFFFF);
     const outline = Color(0xFF2A3A4D);
-    const error = Color(0xFF991B1B);
+    const error = Color(0xFFF87171);
     final cs = ColorScheme.fromSeed(
       seedColor: primary,
       brightness: Brightness.dark,

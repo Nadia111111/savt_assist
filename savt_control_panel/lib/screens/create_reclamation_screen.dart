@@ -655,16 +655,15 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
                       controller: _contactEmailController,
                       keyboardType: TextInputType.emailAddress,
                       validator: (v) {
-                        if (v == null || v.trim().isEmpty) {
-                          return 'Укажите email';
-                        }
-                        if (!v.contains('@') || !v.contains('.')) {
-                          return 'Введите корректный email';
+                        if (v != null && v.trim().isNotEmpty) {
+                          if (!v.contains('@') || !v.contains('.')) {
+                            return 'Введите корректный email';
+                          }
                         }
                         return null;
                       },
                       decoration: const InputDecoration(
-                        labelText: 'Email *',
+                        labelText: 'Email',
                         prefixIcon: Icon(Icons.email_outlined),
                       ),
                     ),
@@ -794,6 +793,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
         final isSelected = _objectType == val;
 
         return ChoiceChip(
+          showCheckmark: false,
           avatar: Icon(
             icon,
             size: 16,

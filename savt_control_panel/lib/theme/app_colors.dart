@@ -26,7 +26,8 @@ class AppColors {
   static const darkHeader = Color(0xFF021A38);
 
   // Общие
-  static const error = Color(0xFF991B1B);
+  static const error = Color(0xFFDC2626);
+  static const errorDark = Color(0xFFF87171);
   static const success = Color(0xFF059669);
   static const warning = Color(0xFFF59E0B);
 }
@@ -60,7 +61,7 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
     primaryLight: AppColors.primary,
     success: AppColors.success,
     warning: AppColors.warning,
-    error: AppColors.error,
+    error: AppColors.errorDark,
   );
 
   @override
