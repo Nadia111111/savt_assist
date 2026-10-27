@@ -35,6 +35,7 @@ import 'image_editor_screen.dart';
 import 'shared_media_screen.dart';
 import '../models/chat_message.dart';
 import '../main.dart';
+import '../utils/web_paste_listener.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -101,6 +102,13 @@ class _ChatScreenState extends State<ChatScreen> {
       PreferencesService.saveLastChatId(_realChatId);
     }
     _loadInitialData();
+
+    WebPasteListener.initialize(
+      onFilePasted: (bytes, fileName, mimeType) {
+        if (!mounted) return;
+        _handlePastedAttachment(bytes, fileName, mimeType);
+      },
+    );
 
     _scrollController.addListener(() {
       if (_scrollController.hasClients) {
@@ -674,6 +682,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    WebPasteListener.dispose();
     _messageKeys.clear();
     _pollingTimer?.cancel();
     PreferencesService.saveLastChatId(null);
@@ -1730,6 +1739,199 @@ Future<void> _deleteSelectedMessages() async {
     }
   }
 
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes Б';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} КБ';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} МБ';
+  }
+
+  void _handlePastedAttachment(Uint8List bytes, String fileName, String mimeType) {
+    if (_isChatArchived) {
+      _showError('Чат перенесен в архив. Отправка сообщений недоступна.');
+      return;
+    }
+
+    final lowercase = fileName.toLowerCase();
+    final isImage = mimeType.startsWith('image/') ||
+        lowercase.endsWith('.png') ||
+        lowercase.endsWith('.jpg') ||
+        lowercase.endsWith('.jpeg') ||
+        lowercase.endsWith('.webp') ||
+        lowercase.endsWith('.gif');
+
+    final captionController = TextEditingController(text: _messageController.text.trim());
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          title: Row(
+            children: [
+              Icon(
+                isImage ? Icons.image_rounded : Icons.insert_drive_file_rounded,
+                color: theme.colorScheme.primary,
+                size: 24,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  isImage ? 'Отправить изображение' : 'Отправить файл',
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isImage)
+                  Center(
+                    child: Container(
+                      constraints: const BoxConstraints(maxHeight: 280, maxWidth: 400),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.3)),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Image.memory(bytes, fit: BoxFit.contain),
+                    ),
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.insert_drive_file, size: 40, color: theme.colorScheme.primary),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                fileName,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _formatBytes(bytes.length),
+                                style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: captionController,
+                  autofocus: true,
+                  maxLines: 3,
+                  minLines: 1,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) {
+                    Navigator.pop(ctx);
+                    final caption = captionController.text.trim();
+                    if (_messageController.text.trim() == caption) {
+                      _messageController.clear();
+                    }
+                    _sendAttachmentBytes(bytes, fileName, mimeType: mimeType, text: caption);
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'Добавить подпись (Enter для отправки)...',
+                    hintStyle: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Отмена'),
+            ),
+            FilledButton.icon(
+              icon: const Icon(Icons.send_rounded, size: 16),
+              label: const Text('Отправить'),
+              onPressed: () {
+                Navigator.pop(ctx);
+                final caption = captionController.text.trim();
+                if (_messageController.text.trim() == caption) {
+                  _messageController.clear();
+                }
+                _sendAttachmentBytes(bytes, fileName, mimeType: mimeType, text: caption);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _sendAttachmentBytes(
+    Uint8List bytes,
+    String fileName, {
+    String? mimeType,
+    String? text,
+  }) async {
+    if (_isChatArchived) {
+      _showError('Чат перенесен в архив. Отправка сообщений недоступна.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final url = await uploadService.uploadAttachmentBytes(bytes, fileName);
+      AuthImage.cacheBytes(url, bytes);
+
+      final size = bytes.length;
+      final effectiveMime = mimeType ?? _getMimeType(fileName);
+      final atts = [
+        {
+          'file_url': url,
+          'file_name': fileName,
+          'file_size_bytes': size,
+          'mime_type': effectiveMime,
+        }
+      ];
+      final replyId = _replyTo != null ? int.tryParse(_replyTo!.id) : null;
+      final messageText = (text != null && text.isNotEmpty) ? text : '';
+      final res = await chatService.sendMessageWithAttachments(
+        _realChatId,
+        messageText,
+        atts,
+        replyToId: replyId,
+      );
+      setState(() {
+        final newMsg = ChatMessage.fromJson(res, _myUserId ?? 0);
+        _messages.insert(0, _replyTo != null ? newMsg.copyWith(replyTo: _replyTo) : newMsg);
+        _replyTo = null;
+      });
+      _animateToBottom();
+    } catch (e) {
+      _showError('Ошибка отправки файла: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _sendCurrentLocation() async {
     if (_isChatArchived) {
       _showError('Чат перенесен в архив. Отправка сообщений недоступна.');
@@ -1854,9 +2056,14 @@ Future<void> _deleteSelectedMessages() async {
               title: const Text('Файл'),
               onTap: () async {
                 Navigator.pop(context);
-                final result = await FilePicker.pickFiles();
-                if (result != null && result.files.single.path != null) {
-                  _sendAttachment(result.files.single.path!);
+                final result = await FilePicker.pickFiles(withData: true);
+                if (result != null && result.files.isNotEmpty) {
+                  final file = result.files.single;
+                  if (file.bytes != null) {
+                    _sendAttachmentBytes(file.bytes!, file.name);
+                  } else if (file.path != null) {
+                    _sendAttachment(file.path!);
+                  }
                 }
               },
             ),

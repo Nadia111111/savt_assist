@@ -59,6 +59,29 @@ class UploadService {
     }
   }
 
+  /// Загрузить файл из байтов (для веб-версии, буфера обмена и т.д.)
+  Future<String> uploadAttachmentBytes(Uint8List bytes, String fileName) async {
+    try {
+      final file = MultipartFile.fromBytes(bytes, filename: fileName);
+      final formData = FormData.fromMap({
+        'file': file,
+      });
+      final response = await _apiClient.dio.post(
+        '/upload/attachment',
+        data: formData,
+        options: Options(headers: {'Content-Type': 'multipart/form-data'}),
+      );
+      final raw = response.data;
+      if (raw is Map) {
+        final url = raw['url'] ?? raw['file_url'];
+        if (url != null) return url.toString();
+      }
+      return raw?.toString() ?? '';
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
   /// Загрузить голосовое сообщение.
   /// Сервер возвращает подписанную ссылку, которую необходимо передавать без изменений.
   Future<String> uploadVoice(String filePath) async {
