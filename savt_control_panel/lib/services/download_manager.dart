@@ -511,16 +511,16 @@ class DownloadExpandedModalWidget extends StatelessWidget {
                                     fontSize: 18,
                                   ),
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  tasks.length > 1
-                                      ? 'Всего в очереди: ${tasks.length}'
-                                      : 'Скачивание документа',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: theme.colorScheme.onSurfaceVariant,
+                                if (tasks.length > 1) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Всего в очереди: ${tasks.length}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
                                   ),
-                                ),
+                                ],
                               ],
                             ),
                           ),
@@ -529,12 +529,6 @@ class DownloadExpandedModalWidget extends StatelessWidget {
                             icon: const Icon(Icons.keyboard_arrow_down, size: 26),
                             tooltip: 'Свернуть в фон',
                             onPressed: () => DownloadManager.instance.minimize(),
-                          ),
-                          // Кнопка закрыть / отменить
-                          IconButton(
-                            icon: const Icon(Icons.close, size: 20),
-                            tooltip: 'Отменить все',
-                            onPressed: () => DownloadManager.instance.cancelAll(),
                           ),
                         ],
                       ),
@@ -733,55 +727,25 @@ class DownloadExpandedModalWidget extends StatelessWidget {
 
                     // Кнопки действий
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
                       child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              icon: const Icon(Icons.close_rounded, size: 16, color: Colors.red),
-                              label: const Text(
-                                'Отменить все',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Colors.red,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                side: BorderSide(color: Colors.red.withValues(alpha: 0.35)),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                              ),
-                              onPressed: () => DownloadManager.instance.cancelAll(),
+                          TextButton(
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.red,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 10),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: FilledButton.icon(
-                              icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20),
-                              label: const Text(
-                                'Свернуть',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                ),
+                            onPressed: () =>
+                                DownloadManager.instance.cancelAll(),
+                            child: const Text(
+                              'Отменить все',
+                              style: TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
                               ),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: theme.colorScheme.primary,
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                              ),
-                              onPressed: () => DownloadManager.instance.minimize(),
                             ),
                           ),
                         ],

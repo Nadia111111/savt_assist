@@ -576,38 +576,22 @@ class _ProjectCabinetsScreenState extends State<ProjectCabinetsScreen>
                 ),
               ),
 
-              // Переключатель вкладок: Шкафы / Документы проекта
-              Container(
-                margin: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: TabBar(
-                  controller: _tabController,
-                  indicatorSize: TabBarIndicatorSize.tab,
-                  indicator: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 4,
-                        offset: const Offset(0, 1),
-                      ),
-                    ],
-                  ),
-                  labelColor: Theme.of(context).colorScheme.primary,
-                  labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                  unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
-                  unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 13),
-                  dividerColor: Colors.transparent,
-                  tabs: [
-                    Tab(text: 'Шкафы (${enrichedCabinets.length})'),
-                    Tab(text: 'Документы (${_projectDocuments.length})'),
-                  ],
-                ),
+              TabBar(
+                controller: _tabController,
+                labelColor: Theme.of(context).colorScheme.primary,
+                unselectedLabelColor:
+                    Theme.of(context).colorScheme.onSurfaceVariant,
+                indicatorColor: Theme.of(context).colorScheme.primary,
+                indicatorWeight: 3,
+                labelStyle:
+                    const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                unselectedLabelStyle:
+                    const TextStyle(fontWeight: FontWeight.normal, fontSize: 13),
+                dividerColor: Colors.transparent,
+                tabs: const [
+                  Tab(text: 'Шкафы'),
+                  Tab(text: 'Документы'),
+                ],
               ),
 
               // Содержимое вкладок

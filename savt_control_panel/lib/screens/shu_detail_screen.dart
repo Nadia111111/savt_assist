@@ -393,13 +393,9 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Отмена'),
           ),
-          ElevatedButton(
+          TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Убрать'),
+            child: const Text('Убрать', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
