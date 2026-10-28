@@ -637,6 +637,9 @@ class CabinetService {
   }
 
   String _handleError(DioException e) {
+    if (e.response?.statusCode == 429) {
+      return 'Слишком много запросов. Пожалуйста, подождите немного.';
+    }
     if (e.response?.data is Map) {
       final map = e.response!.data as Map;
       if (map['detail'] != null) {

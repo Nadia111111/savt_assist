@@ -164,6 +164,15 @@ class UploadService {
           ? fileUrl
           : '${ApiClient.baseUrl}${fileUrl.startsWith('/') ? '' : '/'}$fileUrl';
 
+      if (kIsWeb) {
+        final response = await _apiClient.dio.get<List<int>>(
+          fullUrl,
+          options: Options(responseType: ResponseType.bytes),
+          onReceiveProgress: onProgress,
+        );
+        return response.data ?? [];
+      }
+
       final tempFile = File('${Directory.systemTemp.path}/temp_download_${DateTime.now().microsecondsSinceEpoch}');
       await _apiClient.dio.download(
         fullUrl,
@@ -181,6 +190,9 @@ class UploadService {
   }
 
   String _handleError(DioException e) {
+    if (e.response?.statusCode == 429) {
+      return 'Слишком много запросов. Пожалуйста, подождите немного.';
+    }
     if (e.response?.data is Map && e.response?.data['detail'] != null) {
       final detail = e.response!.data['detail'];
       if (detail is String) return detail;

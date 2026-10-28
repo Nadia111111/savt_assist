@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:crypto/crypto.dart';
 import '../main.dart'; // uploadService
@@ -16,7 +17,16 @@ class AuthImage extends StatefulWidget {
   const AuthImage({super.key, required this.url, this.fit = BoxFit.cover});
 
   static String _cleanUrl(String url) {
-    return url.split('?').first;
+    String clean = url.split('?').first;
+    if (clean.startsWith('http://') || clean.startsWith('https://')) {
+      try {
+        clean = Uri.parse(clean).path;
+      } catch (_) {}
+    }
+    if (!clean.startsWith('/')) {
+      clean = '/$clean';
+    }
+    return clean;
   }
 
   static void cacheBytes(String url, Uint8List bytes) {
@@ -37,6 +47,7 @@ class AuthImage extends StatefulWidget {
   }
 
   static Future<void> _saveToDisk(String url, Uint8List bytes) async {
+    if (kIsWeb) return;
     try {
       final path = await _getCachePath(url);
       final file = File(path);
@@ -49,6 +60,7 @@ class AuthImage extends StatefulWidget {
   }
 
   static Future<Uint8List?> _loadFromDisk(String url) async {
+    if (kIsWeb) return null;
     try {
       final path = await _getCachePath(url);
       final file = File(path);
@@ -62,6 +74,10 @@ class AuthImage extends StatefulWidget {
   }
 
   static Future<void> clearDiskCache() async {
+    if (kIsWeb) {
+      _imageCache.clear();
+      return;
+    }
     try {
       final dir = await getApplicationDocumentsDirectory();
       final cacheDir = Directory('${dir.path}/image_cache');
@@ -75,11 +91,13 @@ class AuthImage extends StatefulWidget {
   }
 
   static Future<String> getCacheSize() async {
+    if (kIsWeb) return '0.0 МБ';
     final mb = await getDiskCacheSizeMB();
     return '${mb.toStringAsFixed(1)} МБ';
   }
 
   static Future<double> getDiskCacheSizeMB() async {
+    if (kIsWeb) return 0.0;
     try {
       final dir = await getApplicationDocumentsDirectory();
       final cacheDir = Directory('${dir.path}/image_cache');
@@ -99,6 +117,7 @@ class AuthImage extends StatefulWidget {
   }
 
   static Future<void> _checkAndEvictCache() async {
+    if (kIsWeb) return;
     try {
       final dir = await getApplicationDocumentsDirectory();
       final cacheDir = Directory('${dir.path}/image_cache');
@@ -148,6 +167,16 @@ class _AuthImageState extends State<AuthImage> {
   void initState() {
     super.initState();
     _imageFuture = _loadImage();
+  }
+
+  @override
+  void didUpdateWidget(AuthImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) {
+      setState(() {
+        _imageFuture = _loadImage();
+      });
+    }
   }
 
   Future<Uint8List> _loadImage() async {

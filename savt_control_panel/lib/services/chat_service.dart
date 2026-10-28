@@ -794,6 +794,9 @@ class ChatService {
       }
       return serverDetail.isNotEmpty ? serverDetail : 'Недостаточно прав (403). Действие не разрешено для вашей учетной записи.';
     }
+    if (e.response?.statusCode == 429) {
+      return 'Слишком много запросов. Пожалуйста, подождите немного.';
+    }
     if (e.response?.data is Map && e.response?.data['detail'] != null) {
       final detail = e.response!.data['detail'];
       if (detail is String) return detail;

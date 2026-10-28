@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import '../theme/app_colors.dart';
@@ -40,7 +41,7 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
 
   Future<Uint8List?> _getImageBytes() async {
     if (_editedBytes != null) return _editedBytes;
-    if (widget.localPath != null) {
+    if (!kIsWeb && widget.localPath != null) {
       try {
         return await File(widget.localPath!).readAsBytes();
       } catch (_) {}
@@ -70,8 +71,10 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
       Uint8List? bytes;
       if (_editedBytes != null) {
         bytes = _editedBytes;
-      } else if (widget.localPath != null) {
-        bytes = await File(widget.localPath!).readAsBytes();
+      } else if (!kIsWeb && widget.localPath != null) {
+        try {
+          bytes = await File(widget.localPath!).readAsBytes();
+        } catch (_) {}
       } else if (widget.imageUrl != null) {
         final cached = AuthImage.getCachedBytes(widget.imageUrl!);
         if (cached != null) {

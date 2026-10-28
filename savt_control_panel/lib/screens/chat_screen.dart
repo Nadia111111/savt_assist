@@ -93,6 +93,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _hasMoreMessages = true;
 
   Timer? _pollingTimer;
+  int _pollingCycle = 0;
 
   @override
   void initState() {
@@ -351,19 +352,22 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _startMessagePolling() {
     _pollingTimer?.cancel();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 4), (timer) async {
       if (!mounted) {
         timer.cancel();
         return;
       }
       if (_realChatId == 0) return;
 
+      _pollingCycle++;
       try {
         final rawMessages = await chatService.getMessages(_realChatId, limit: 40);
         List<Map<String, dynamic>>? rawPinned;
-        try {
-          rawPinned = await chatService.getPinnedMessages(_realChatId);
-        } catch (_) {}
+        if (_pollingCycle % 8 == 1 || _pinnedMessages.isEmpty) {
+          try {
+            rawPinned = await chatService.getPinnedMessages(_realChatId);
+          } catch (_) {}
+        }
 
         bool shouldSetState = false;
 
@@ -472,6 +476,15 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       } catch (e) {
         debugPrint('Polling error: $e');
+        final errStr = e.toString().toLowerCase();
+        if (errStr.contains('429') || errStr.contains('слишком много запросов')) {
+          _pollingTimer?.cancel();
+          Future.delayed(const Duration(seconds: 10), () {
+            if (mounted) {
+              _startMessagePolling();
+            }
+          });
+        }
       }
     });
   }
@@ -673,7 +686,12 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e, stackTrace) {
       debugPrint('Error loading initial data: $e');
       debugPrintStack(stackTrace: stackTrace);
-      _showError('Ошибка загрузки: $e');
+      final errStr = e.toString();
+      if (errStr.contains('429') || errStr.contains('Слишком много запросов') || errStr.toLowerCase().contains('too many requests')) {
+        _showError('Слишком много запросов к серверу. Подождите немного.');
+      } else {
+        _showError('Ошибка загрузки: $e');
+      }
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -2771,9 +2789,9 @@ Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
                               },
                               child: Hero(
                                 tag: heroTag,
-                                child: att.localPath != null
-                                  ? Image.file(File(att.localPath!), fit: BoxFit.cover)
-                                  : AuthImage(url: att.fileUrl!, fit: BoxFit.cover),
+                                child: (!kIsWeb && att.localPath != null && File(att.localPath!).existsSync())
+                                    ? Image.file(File(att.localPath!), fit: BoxFit.cover)
+                                    : AuthImage(url: att.fileUrl ?? '', fit: BoxFit.cover),
                               ),
                             ),
                           ),
