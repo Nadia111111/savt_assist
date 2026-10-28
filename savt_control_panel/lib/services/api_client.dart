@@ -42,9 +42,13 @@ class ApiClient {
           options.path = '$apiPrefix${options.path}';
         }
 
-        final token = await _tokenStorage.getAccessToken();
-        if (token != null && token.isNotEmpty) {
-          options.headers['Authorization'] = 'Bearer $token';
+        final path = options.uri.path;
+        final isStatic = path.startsWith('/static/') || options.path.startsWith('/static/');
+        if (!isStatic) {
+          final token = await _tokenStorage.getAccessToken();
+          if (token != null && token.isNotEmpty) {
+            options.headers['Authorization'] = 'Bearer $token';
+          }
         }
 
         print('🔵 [API] ${options.method} ${options.uri}');
@@ -75,24 +79,29 @@ class ApiClient {
           return handler.resolve(emptyResponse);
         }
 
-        if (error.type == DioExceptionType.connectionError) {
-          print('Network connection error: ${error.message}');
-          NetworkService.setOnline(false);
-        } else if (error.type == DioExceptionType.unknown) {
-          final errMsg = error.message?.toLowerCase() ?? '';
-          if (errMsg.contains('network') ||
-              errMsg.contains('connection') ||
-              errMsg.contains('socket') ||
-              errMsg.contains('host') ||
-              errMsg.contains('unreachable') ||
-              errMsg.contains('refused')) {
-            print('Network-related unknown error: ${error.message}');
+        final errPath = error.requestOptions.uri.path;
+        final isStaticErr = errPath.startsWith('/static/') || error.requestOptions.path.startsWith('/static/');
+
+        if (!isStaticErr) {
+          if (error.type == DioExceptionType.connectionError) {
+            print('Network connection error: ${error.message}');
             NetworkService.setOnline(false);
+          } else if (error.type == DioExceptionType.unknown) {
+            final errMsg = error.message?.toLowerCase() ?? '';
+            if (errMsg.contains('network') ||
+                errMsg.contains('connection') ||
+                errMsg.contains('socket') ||
+                errMsg.contains('host') ||
+                errMsg.contains('unreachable') ||
+                errMsg.contains('refused')) {
+              print('Network-related unknown error: ${error.message}');
+              NetworkService.setOnline(false);
+            } else {
+              NetworkService.setOnline(true);
+            }
           } else {
             NetworkService.setOnline(true);
           }
-        } else {
-          NetworkService.setOnline(true);
         }
 
         if (error.response?.statusCode == 401) {

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:crypto/crypto.dart';
+import '../services/api_client.dart';
 import '../main.dart'; // uploadService
 
 class AuthImage extends StatefulWidget {
@@ -161,21 +162,27 @@ class AuthImage extends StatefulWidget {
 }
 
 class _AuthImageState extends State<AuthImage> {
-  late Future<Uint8List> _imageFuture;
+  Future<Uint8List>? _imageFuture;
 
   @override
   void initState() {
     super.initState();
-    _imageFuture = _loadImage();
+    if (!kIsWeb) {
+      _imageFuture = _loadImage();
+    }
   }
 
   @override
   void didUpdateWidget(AuthImage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.url != widget.url) {
-      setState(() {
-        _imageFuture = _loadImage();
-      });
+      if (!kIsWeb) {
+        setState(() {
+          _imageFuture = _loadImage();
+        });
+      } else {
+        setState(() {});
+      }
     }
   }
 
@@ -214,6 +221,29 @@ class _AuthImageState extends State<AuthImage> {
     final cleanUrl = AuthImage._cleanUrl(widget.url);
     if (AuthImage._imageCache.containsKey(cleanUrl)) {
       return Image.memory(AuthImage._imageCache[cleanUrl]!, fit: widget.fit);
+    }
+
+    if (kIsWeb) {
+      final fullUrl = widget.url.startsWith('http')
+          ? widget.url
+          : '${ApiClient.baseUrl}${widget.url.startsWith('/') ? '' : '/'}${widget.url}';
+      return Image.network(
+        fullUrl,
+        fit: widget.fit,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return const Center(
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) {
+          return const Center(child: Icon(Icons.broken_image, color: Colors.grey));
+        },
+      );
     }
 
     return FutureBuilder<Uint8List>(
