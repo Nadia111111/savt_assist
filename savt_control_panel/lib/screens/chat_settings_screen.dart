@@ -260,6 +260,7 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
     final isPerChat = widget.chatId != null;
 
     return GradientScaffold(
+      currentNavIndex: 2,
       appBarTitle:
           isPerChat ? 'Настройки этого чата' : 'Глобальные настройки чатов',
       appBarLeading: IconButton(

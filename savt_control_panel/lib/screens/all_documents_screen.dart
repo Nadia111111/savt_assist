@@ -231,6 +231,7 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
     final theme = Theme.of(context);
 
     return GradientScaffold(
+      currentNavIndex: 0,
       appBarTitle: 'Все документы',
       appBarLeading: IconButton(
         icon: const Icon(Icons.arrow_back, color: Colors.white),

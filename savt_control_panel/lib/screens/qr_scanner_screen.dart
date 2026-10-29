@@ -337,7 +337,6 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
 
     return GradientScaffold(
       isScannerActive: true,
-      currentNavIndex: -1,
       appBarTitle: isProject ? 'Добавить проект' : 'Добавить шкаф (ШУ)',
       appBarAction: IconButton(
         icon: const Icon(Icons.photo_library_outlined, color: Colors.white),

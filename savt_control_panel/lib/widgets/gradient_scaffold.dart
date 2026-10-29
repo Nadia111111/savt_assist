@@ -96,13 +96,13 @@ class _GradientScaffoldState extends State<GradientScaffold> {
         id: this,
         showBottomBar: true,
         isScannerActive: true,
-        currentIndex: -1,
       );
-    } else if (widget.currentNavIndex != null) {
+    } else {
       AppNavState.instance.pushConfig(
         id: this,
         showBottomBar: true,
         currentIndex: widget.currentNavIndex,
+        isScannerActive: false,
       );
     }
   }

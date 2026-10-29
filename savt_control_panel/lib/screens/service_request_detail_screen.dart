@@ -180,6 +180,7 @@ class _ServiceRequestDetailScreenState extends State<ServiceRequestDetailScreen>
     final theme = Theme.of(context);
 
     return GradientScaffold(
+      currentNavIndex: 0,
       appBarTitle: 'Детали заявки',
       appBarLeading: IconButton(
         icon: const Icon(Icons.arrow_back, color: Colors.white),

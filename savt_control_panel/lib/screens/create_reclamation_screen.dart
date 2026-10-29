@@ -510,6 +510,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
   @override
   Widget build(BuildContext context) {
     return GradientScaffold(
+      currentNavIndex: 0,
       appBarTitle: 'Подача рекламации',
       body: ResponsiveContainer(
         maxWidth: 600,

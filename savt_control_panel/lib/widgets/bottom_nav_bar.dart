@@ -255,7 +255,7 @@ class _BottomNavBarState extends State<BottomNavBar> {
 
   Widget _buildCenterScannerButton(BuildContext context) {
     final theme = Theme.of(context);
-    final isScannerSelected = widget.isScannerActive || widget.currentIndex == -1;
+    final isScannerSelected = widget.isScannerActive;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -285,9 +285,6 @@ class _BottomNavBarState extends State<BottomNavBar> {
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(12),
-              border: isScannerSelected
-                  ? Border.all(color: Colors.white, width: 2)
-                  : null,
               boxShadow: [
                 BoxShadow(
                   color: theme.colorScheme.primary
@@ -415,7 +412,7 @@ class AppNavState extends ChangeNotifier {
       final top = _configStack.last;
       _isVisible = top.showBottomBar;
       _isScannerActive = top.isScannerActive;
-      if (top.currentIndex != null) {
+      if (top.currentIndex != null && top.currentIndex! >= 0) {
         _currentIndex = top.currentIndex!;
       }
     }

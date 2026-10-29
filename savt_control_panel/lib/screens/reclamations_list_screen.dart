@@ -159,6 +159,7 @@ class _ReclamationsListScreenState extends State<ReclamationsListScreen> {
   @override
   Widget build(BuildContext context) {
     return GradientScaffold(
+      currentNavIndex: 0,
       appBarTitle: 'Рекламации',
       appBarAction: IconButton(
         icon: Icon(_isSearchExpanded ? Icons.close : Icons.search,

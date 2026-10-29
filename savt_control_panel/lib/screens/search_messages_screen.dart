@@ -22,6 +22,7 @@ class _SearchMessagesScreenState extends State<SearchMessagesScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return GradientScaffold(
+      currentNavIndex: 2,
       appBarTitle: 'Поиск сообщений',
       body: Column(
         children: [

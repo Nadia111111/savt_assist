@@ -418,6 +418,7 @@ class _ServiceRequestScreenState extends State<ServiceRequestScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return GradientScaffold(
+      currentNavIndex: 0,
       appBarTitle: 'Заявка на обслуживание',
       body: ResponsiveContainer(
         maxWidth: 600,

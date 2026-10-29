@@ -211,6 +211,7 @@ class _NotesScreenState extends State<NotesScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return GradientScaffold(
+      currentNavIndex: 0,
       appBarTitle: 'Мои заметки',
       body: _isLoading && _notes.isEmpty
           ? const SkeletonList()

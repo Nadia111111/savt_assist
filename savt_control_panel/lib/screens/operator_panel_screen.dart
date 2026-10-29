@@ -23,6 +23,7 @@ class _OperatorPanelScreenState extends State<OperatorPanelScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return GradientScaffold(
+      currentNavIndex: 2,
       appBarTitle: 'Панель оператора',
       body: ListView.builder(
         padding: const EdgeInsets.all(AppSpacing.base),

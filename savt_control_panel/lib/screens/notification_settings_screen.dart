@@ -143,6 +143,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
   @override
   Widget build(BuildContext context) {
     return GradientScaffold(
+      currentNavIndex: 3,
       appBarTitle: 'Настройки уведомлений',
       appBarLeading: IconButton(
         icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 18),

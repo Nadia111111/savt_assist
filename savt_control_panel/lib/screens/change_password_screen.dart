@@ -104,6 +104,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return GradientScaffold(
+      currentNavIndex: 3,
       appBarTitle: 'Смена пароля',
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(AppSpacing.base),

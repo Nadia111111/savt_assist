@@ -926,6 +926,7 @@ class _SharedMediaScreenState extends State<SharedMediaScreen> {
   @override
   Widget build(BuildContext context) {
     return GradientScaffold(
+      currentNavIndex: 2,
       appBarTitle: 'Материалы чата',
       appBarLeading: IconButton(
         icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 18),

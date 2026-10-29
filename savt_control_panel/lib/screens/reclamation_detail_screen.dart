@@ -186,6 +186,7 @@ class _ReclamationDetailScreenState extends State<ReclamationDetailScreen> {
     final theme = Theme.of(context);
 
     return GradientScaffold(
+      currentNavIndex: 0,
       appBarTitle: 'Рекламация',
       appBarAction: IconButton(
         icon: const Icon(Icons.refresh, color: Colors.white),

@@ -132,6 +132,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     final theme = Theme.of(context);
 
     return GradientScaffold(
+      currentNavIndex: 0,
       appBarTitle: 'Заявка №${widget.requestId}',
       appBarLeading: IconButton(
         icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 18),

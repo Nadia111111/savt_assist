@@ -184,12 +184,14 @@ class _ChangePhoneScreenState extends State<ChangePhoneScreen> {
 
     if (_isLoading) {
       return const GradientScaffold(
+        currentNavIndex: 3,
         appBarTitle: 'Смена номера',
         body: SkeletonDetail(),
       );
     }
 
     return GradientScaffold(
+      currentNavIndex: 3,
       appBarTitle: 'Смена номера',
       body: RefreshIndicator(
         onRefresh: _loadData,
