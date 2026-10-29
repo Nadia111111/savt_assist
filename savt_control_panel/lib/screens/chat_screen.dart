@@ -3607,7 +3607,7 @@ const Spacer(),
                           ),
                           contextMenuBuilder: (context, editableTextState) {
                             final List<ContextMenuButtonItem> buttonItems =
-                                editableTextState.buttonItems;
+                                editableTextState.contextMenuButtonItems;
                             if (kIsWeb) {
                               return AdaptiveTextSelectionToolbar.buttonItems(
                                 anchors: editableTextState.contextMenuAnchors,
