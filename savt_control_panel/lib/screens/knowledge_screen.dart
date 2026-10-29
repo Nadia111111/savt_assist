@@ -10,7 +10,6 @@ import '../services/file_save_helper.dart';
 import '../theme/app_spacing.dart';
 import '../widgets/gradient_scaffold.dart';
 import '../widgets/skeletons.dart';
-import '../widgets/bottom_nav_bar.dart';
 import '../widgets/animated_card.dart';
 import '../main.dart'; // knowledgeService
 import '../utils/error_handler.dart';
@@ -29,7 +28,6 @@ class KnowledgeScreen extends StatefulWidget {
 class KnowledgeScreenState extends State<KnowledgeScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final int _currentIndex = 1;
   String _searchQuery = '';
   bool _isSearchExpanded = false;
   final TextEditingController _searchController = TextEditingController();
@@ -365,7 +363,7 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
   @override
   Widget build(BuildContext context) {
     return GradientScaffold(
-      showBottomNavBar: !widget.isTab,
+      showBottomNavBar: true,
       currentNavIndex: 1,
       appBarTitle: 'База знаний',
       showBackButton: false,
@@ -590,12 +588,6 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
         ],
       ),
     ),
-      bottomNavBar: widget.isTab
-          ? null
-          : BottomNavBar(
-              currentIndex: _currentIndex,
-              onTap: _onNavTapped,
-            ),
     );
   }
 
@@ -1853,22 +1845,6 @@ void _showArticleDetail(int articleId) async {
       return '${date.day}.${date.month}.${date.year}';
     } catch (_) {
       return '';
-    }
-  }
-
-  void _onNavTapped(int index) {
-    switch (index) {
-      case 0:
-        Navigator.pushReplacementNamed(context, '/shu-list');
-        break;
-      case 1:
-        break;
-      case 2:
-        Navigator.pushReplacementNamed(context, '/chats');
-        break;
-      case 3:
-        Navigator.pushReplacementNamed(context, '/profile');
-        break;
     }
   }
 }

@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import '../theme/app_spacing.dart';
+import '../widgets/bottom_nav_bar.dart';
 
 class DrawingLine {
   final List<Offset> points;
@@ -39,6 +40,21 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
   Color _selectedColor = Colors.red;
   double _selectedWidth = 4.0;
   bool _isDrawing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    AppNavState.instance.pushConfig(
+      id: this,
+      showBottomBar: false,
+    );
+  }
+
+  @override
+  void dispose() {
+    AppNavState.instance.removeConfig(this);
+    super.dispose();
+  }
 
   final List<Color> _palette = [
     Colors.red,

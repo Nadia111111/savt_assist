@@ -311,6 +311,275 @@ class _BottomNavBarState extends State<BottomNavBar> {
   }
 }
 
+/// Состояние глобальной панели навигации
+class AppNavState extends ChangeNotifier {
+  static final AppNavState instance = AppNavState._internal();
+  AppNavState._internal();
+
+  bool _isVisible = true;
+  int _currentIndex = 0;
+  bool _isScannerActive = false;
+  bool _isRouteExcluded = false;
+
+  bool get isVisible => _isVisible && !_isRouteExcluded;
+  int get currentIndex => _currentIndex;
+  bool get isScannerActive => _isScannerActive;
+
+  final List<AppNavConfig> _configStack = [];
+
+  void setRouteExcluded(bool excluded) {
+    if (_isRouteExcluded != excluded) {
+      _isRouteExcluded = excluded;
+      notifyListeners();
+    }
+  }
+
+  void pushConfig({
+    required Object id,
+    required bool showBottomBar,
+    int? currentIndex,
+    bool isScannerActive = false,
+  }) {
+    _configStack.removeWhere((c) => c.id == id);
+    _configStack.add(AppNavConfig(
+      id: id,
+      showBottomBar: showBottomBar,
+      currentIndex: currentIndex,
+      isScannerActive: isScannerActive,
+    ));
+    _applyCurrentConfig();
+  }
+
+  void updateConfig({
+    required Object id,
+    required bool showBottomBar,
+    int? currentIndex,
+    bool isScannerActive = false,
+  }) {
+    final idx = _configStack.indexWhere((c) => c.id == id);
+    if (idx != -1) {
+      _configStack[idx] = AppNavConfig(
+        id: id,
+        showBottomBar: showBottomBar,
+        currentIndex: currentIndex,
+        isScannerActive: isScannerActive,
+      );
+      if (idx == _configStack.length - 1) {
+        _applyCurrentConfig();
+      }
+    } else {
+      pushConfig(
+        id: id,
+        showBottomBar: showBottomBar,
+        currentIndex: currentIndex,
+        isScannerActive: isScannerActive,
+      );
+    }
+  }
+
+  void removeConfig(Object id) {
+    final removedIndex = _configStack.indexWhere((c) => c.id == id);
+    if (removedIndex != -1) {
+      final wasTop = removedIndex == _configStack.length - 1;
+      _configStack.removeAt(removedIndex);
+      if (wasTop) {
+        _applyCurrentConfig();
+      }
+    }
+  }
+
+  void setTab(int index) {
+    if (_currentIndex != index || _isScannerActive) {
+      _currentIndex = index;
+      _isScannerActive = false;
+      notifyListeners();
+    }
+  }
+
+  void setScannerActive(bool active) {
+    if (_isScannerActive != active) {
+      _isScannerActive = active;
+      notifyListeners();
+    }
+  }
+
+  void setVisible(bool visible) {
+    if (_isVisible != visible) {
+      _isVisible = visible;
+      notifyListeners();
+    }
+  }
+
+  void _applyCurrentConfig() {
+    if (_configStack.isNotEmpty) {
+      final top = _configStack.last;
+      _isVisible = top.showBottomBar;
+      _isScannerActive = top.isScannerActive;
+      if (top.currentIndex != null) {
+        _currentIndex = top.currentIndex!;
+      }
+    }
+    notifyListeners();
+  }
+}
+
+class AppNavConfig {
+  final Object id;
+  final bool showBottomBar;
+  final int? currentIndex;
+  final bool isScannerActive;
+
+  AppNavConfig({
+    required this.id,
+    required this.showBottomBar,
+    this.currentIndex,
+    this.isScannerActive = false,
+  });
+}
+
+/// Наблюдатель роутов для переключения видимости нижней панели
+class AppRouteObserver extends NavigatorObserver {
+  static final AppRouteObserver instance = AppRouteObserver();
+
+  static const Set<String> _excludedRoutes = {
+    '/',
+    '/onboarding',
+    '/auth',
+    '/forgot-password',
+    '/register-request',
+    '/password-reset-request',
+  };
+
+  void _handleRoute(Route<dynamic>? route) {
+    if (route == null) return;
+    final name = route.settings.name;
+    if (name != null) {
+      if (_excludedRoutes.contains(name)) {
+        AppNavState.instance.setRouteExcluded(true);
+        return;
+      }
+      AppNavState.instance.setRouteExcluded(false);
+
+      if (name == '/qr-scanner' ||
+          name.startsWith('/add/cabinet/') ||
+          name.startsWith('/add/project/')) {
+        AppNavState.instance.setScannerActive(true);
+      } else {
+        AppNavState.instance.setScannerActive(false);
+        if (name == '/chats' ||
+            name.startsWith('/chat/') ||
+            name.startsWith('/chat-settings') ||
+            name == '/search-messages' ||
+            name == '/operator-panel') {
+          AppNavState.instance.setTab(2);
+        } else if (name == '/knowledge' || name == '/about-us') {
+          AppNavState.instance.setTab(1);
+        } else if (name == '/profile' ||
+            name == '/edit-profile' ||
+            name == '/change-password' ||
+            name == '/change-phone' ||
+            name == '/notifications') {
+          AppNavState.instance.setTab(3);
+        } else if (name == '/home' ||
+            name == '/shu-list' ||
+            name.startsWith('/shu-detail/') ||
+            name == '/requests-hub' ||
+            name == '/my-requests' ||
+            name == '/reclamations' ||
+            name.startsWith('/reclamation-detail/') ||
+            name == '/create-reclamation' ||
+            name.startsWith('/service-request') ||
+            name == '/all-documents' ||
+            name == '/notes' ||
+            name == '/favorites') {
+          AppNavState.instance.setTab(0);
+        }
+      }
+    }
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPush(route, previousRoute);
+    _handleRoute(route);
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPop(route, previousRoute);
+    _handleRoute(previousRoute);
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
+    _handleRoute(newRoute);
+  }
+}
+
+/// Статичный виджет нижней навигации без анимаций перехода между экранами
+class PersistentBottomNavBar extends StatelessWidget {
+  const PersistentBottomNavBar({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: AppNavState.instance,
+      builder: (context, _) {
+        final state = AppNavState.instance;
+        final isGuest = tokenStorage.isGuestMode;
+        final effectiveIndex =
+            state.isScannerActive ? -1 : state.currentIndex;
+
+        return ValueListenableBuilder<int>(
+          valueListenable: OfflineService.unreadChatCount,
+          builder: (context, _, __) {
+            return BottomNavBar(
+              currentIndex: effectiveIndex,
+              isGuestMode: isGuest,
+              isScannerActive: state.isScannerActive,
+              onTap: (index) => AppBottomNavBar.navigateToTab(context, index),
+              onScannerTap: () => AppBottomNavBar.navigateToScanner(
+                context,
+                isAlreadyOnScanner: state.isScannerActive,
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// Корневой контейнер-оболочка (App Shell), обеспечивающий статичное положение
+/// панели навигации поверх всех переходов между экранами.
+class PersistentAppShell extends StatelessWidget {
+  final Widget child;
+
+  const PersistentAppShell({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: AppNavState.instance,
+      builder: (context, _) {
+        final state = AppNavState.instance;
+        final isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+        final showBar = state.isVisible && !isKeyboardOpen;
+
+        return Scaffold(
+          resizeToAvoidBottomInset: false,
+          backgroundColor: Colors.transparent,
+          body: child,
+          bottomNavigationBar: showBar
+              ? const PersistentBottomNavBar()
+              : null,
+        );
+      },
+    );
+  }
+}
+
 /// Глобальная нижняя панель навигации для вторичных экранов приложения
 class AppBottomNavBar extends StatelessWidget {
   final int? currentNavIndex;
@@ -323,6 +592,7 @@ class AppBottomNavBar extends StatelessWidget {
   });
 
   static void navigateToTab(BuildContext context, int index) {
+    AppNavState.instance.setTab(index);
     final state = MainNavigationContainer.globalKey.currentState;
     if (state != null) {
       Navigator.of(context).popUntil((route) => route.isFirst);
@@ -345,6 +615,7 @@ class AppBottomNavBar extends StatelessWidget {
     final currentRoute = ModalRoute.of(context)?.settings.name;
     if (currentRoute == '/qr-scanner') return;
 
+    AppNavState.instance.setScannerActive(true);
     final state = MainNavigationContainer.globalKey.currentState;
     if (state != null) {
       Navigator.of(context).popUntil((route) => route.isFirst);
@@ -354,22 +625,8 @@ class AppBottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Скрываем нижнюю навигацию, когда открыта экранная клавиатура
-    final isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
-    if (isKeyboardOpen) {
-      return const SizedBox.shrink();
-    }
-
-    final isGuest = tokenStorage.isGuestMode;
-    final int effectiveIndex = isScannerActive ? -1 : (currentNavIndex ?? -1);
-
-    return BottomNavBar(
-      currentIndex: effectiveIndex,
-      isGuestMode: isGuest,
-      isScannerActive: isScannerActive,
-      onTap: (index) => navigateToTab(context, index),
-      onScannerTap: () =>
-          navigateToScanner(context, isAlreadyOnScanner: isScannerActive),
-    );
+    // В новой архитектуре AppShell панель навигации вынесена на уровень MaterialApp.builder.
+    // Если AppBottomNavBar вызван локально, скрываем его во избежание дублирования.
+    return const SizedBox.shrink();
   }
 }

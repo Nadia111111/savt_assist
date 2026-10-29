@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import '../theme/app_colors.dart';
 import '../services/file_save_helper.dart';
 import '../widgets/auth_image.dart';
+import '../widgets/bottom_nav_bar.dart';
 import 'image_editor_screen.dart';
 import '../main.dart';
 import '../utils/download_helper.dart';
@@ -39,6 +40,21 @@ class FullscreenImageViewer extends StatefulWidget {
 class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
   Uint8List? _editedBytes;
   bool _isDownloading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    AppNavState.instance.pushConfig(
+      id: this,
+      showBottomBar: false,
+    );
+  }
+
+  @override
+  void dispose() {
+    AppNavState.instance.removeConfig(this);
+    super.dispose();
+  }
 
   Future<Uint8List?> _getImageBytes() async {
     if (_editedBytes != null) return _editedBytes;

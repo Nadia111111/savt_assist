@@ -4,7 +4,6 @@ import '../theme/app_spacing.dart';
 import '../theme/app_colors.dart';
 import '../services/offline_service.dart';
 import '../widgets/gradient_scaffold.dart';
-import '../widgets/bottom_nav_bar.dart';
 import '../widgets/animated_card.dart';
 import '../widgets/skeletons.dart';
 import '../widgets/responsive_layout.dart';
@@ -19,7 +18,6 @@ class ChatsScreen extends StatefulWidget {
 }
 
 class ChatsScreenState extends State<ChatsScreen> with SingleTickerProviderStateMixin {
-  final int _currentIndex = 2;
   String _searchQuery = '';
   bool _isSearchExpanded = false;
   final FocusNode _searchFocusNode = FocusNode();
@@ -381,7 +379,7 @@ class ChatsScreenState extends State<ChatsScreen> with SingleTickerProviderState
     OfflineService().updateUnreadChatCount(unreadTotal);
 
     return GradientScaffold(
-      showBottomNavBar: !widget.isTab,
+      showBottomNavBar: true,
       currentNavIndex: 2,
       appBarTitle: _isSelectionMode
           ? 'Выбрано: ${_selectedChatIds.length}'
@@ -559,12 +557,6 @@ class ChatsScreenState extends State<ChatsScreen> with SingleTickerProviderState
         ],
       ),
       ),
-      bottomNavBar: widget.isTab
-          ? null
-          : BottomNavBar(
-              currentIndex: _currentIndex,
-              onTap: _onNavTapped,
-            ),
     );
   }
 
@@ -889,20 +881,4 @@ class ChatsScreenState extends State<ChatsScreen> with SingleTickerProviderState
        ),
      );
    }
-
-  void _onNavTapped(int index) {
-    switch (index) {
-      case 0:
-        Navigator.pushReplacementNamed(context, '/shu-list');
-        break;
-      case 1:
-        Navigator.pushReplacementNamed(context, '/knowledge');
-        break;
-      case 2:
-        break;
-      case 3:
-        Navigator.pushReplacementNamed(context, '/profile');
-        break;
-    }
-  }
 }

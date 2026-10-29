@@ -66,11 +66,51 @@ class _GradientScaffoldState extends State<GradientScaffold> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _syncNavConfig();
+  }
+
+  @override
   void didUpdateWidget(covariant GradientScaffold oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.appBarTitle != widget.appBarTitle) {
       _isTitleExpanded = false;
     }
+    if (oldWidget.showBottomNavBar != widget.showBottomNavBar ||
+        oldWidget.currentNavIndex != widget.currentNavIndex ||
+        oldWidget.isScannerActive != widget.isScannerActive ||
+        oldWidget.bottomNavBar != widget.bottomNavBar) {
+      _syncNavConfig();
+    }
+  }
+
+  void _syncNavConfig() {
+    if (widget.bottomNavBar != null || !widget.showBottomNavBar) {
+      AppNavState.instance.pushConfig(
+        id: this,
+        showBottomBar: false,
+      );
+    } else if (widget.isScannerActive) {
+      AppNavState.instance.pushConfig(
+        id: this,
+        showBottomBar: true,
+        isScannerActive: true,
+        currentIndex: -1,
+      );
+    } else if (widget.currentNavIndex != null) {
+      AppNavState.instance.pushConfig(
+        id: this,
+        showBottomBar: true,
+        currentIndex: widget.currentNavIndex,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    AppNavState.instance.removeConfig(this);
+    super.dispose();
   }
 
   @override
@@ -173,13 +213,7 @@ class _GradientScaffoldState extends State<GradientScaffold> {
             ),
           ],
         ),
-        bottomNavigationBar: widget.bottomNavBar ??
-            (widget.showBottomNavBar
-                ? AppBottomNavBar(
-                    currentNavIndex: widget.currentNavIndex,
-                    isScannerActive: widget.isScannerActive,
-                  )
-                : null),
+        bottomNavigationBar: widget.bottomNavBar,
         floatingActionButton: widget.floatingActionButton,
       ),
     );

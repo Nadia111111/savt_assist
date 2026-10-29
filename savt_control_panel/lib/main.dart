@@ -35,6 +35,7 @@ import 'screens/navigation_container.dart';
 import 'screens/create_reclamation_screen.dart';
 import 'screens/reclamation_detail_screen.dart';
 import 'screens/requests_hub_screen.dart';
+import 'widgets/bottom_nav_bar.dart';
 import 'widgets/connection_notification_wrapper.dart';
 import 'services/download_manager.dart';
 import 'services/app_theme.dart';
@@ -215,8 +216,11 @@ class AppScrollBehavior extends MaterialScrollBehavior {
       };
 }
 
-PageRouteBuilder<T> _buildRoute<T>(Widget page) {
+RouteSettings? _currentGeneratingRouteSettings;
+
+PageRouteBuilder<T> _buildRoute<T>(Widget page, [RouteSettings? settings]) {
   return PageRouteBuilder<T>(
+    settings: settings ?? _currentGeneratingRouteSettings,
     pageBuilder: (_, __, ___) => page,
     transitionsBuilder: (_, animation, __, child) => FadeTransition(
       opacity: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
@@ -724,12 +728,16 @@ class _ControlPanelAppState extends State<ControlPanelApp> {
       builder: (context, themeMode, child) {
         return MaterialApp(
           navigatorKey: ControlPanelApp.navigatorKey,
+          navigatorObservers: [
+            AppRouteObserver.instance,
+          ],
           title: 'SAVT Assist',
           debugShowCheckedModeBanner: false,
           scrollBehavior: const AppScrollBehavior(),
           themeMode: themeMode,
           initialRoute: '/',
           onGenerateInitialRoutes: (initialRouteName) {
+            _currentGeneratingRouteSettings = const RouteSettings(name: '/');
             return [_buildRoute(const SplashScreen())];
           },
           builder: (context, child) {
@@ -740,12 +748,15 @@ class _ControlPanelAppState extends State<ControlPanelApp> {
               },
               child: ConnectionNotificationWrapper(
                 child: DownloadOverlayWrapper(
-                  child: child!,
+                  child: PersistentAppShell(
+                    child: child!,
+                  ),
                 ),
               ),
             );
           },
           onGenerateRoute: (settings) {
+            _currentGeneratingRouteSettings = settings;
             if (settings.name?.startsWith('/chat/') == true) {
               final uri = Uri.parse(settings.name!);
               final chatIdStr = uri.pathSegments.last;

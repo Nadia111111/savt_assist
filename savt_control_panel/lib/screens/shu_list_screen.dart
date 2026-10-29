@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import '../widgets/gradient_scaffold.dart';
-import '../widgets/bottom_nav_bar.dart';
 import '../widgets/animated_card.dart';
 import '../widgets/skeletons.dart';
 import '../models/cabinet.dart';
@@ -25,7 +24,6 @@ class ShuListScreen extends StatefulWidget {
 
 class ShuListScreenState extends State<ShuListScreen>
     with WidgetsBindingObserver {
-  final int _currentIndex = 0;
   String _searchQuery = '';
   bool _isSearchExpanded = false;
   final TextEditingController _searchController = TextEditingController();
@@ -550,7 +548,7 @@ class ShuListScreenState extends State<ShuListScreen>
   @override
   Widget build(BuildContext context) {
     return GradientScaffold(
-      showBottomNavBar: !widget.isTab,
+      showBottomNavBar: true,
       currentNavIndex: 0,
       appBarTitle: _isSelectionMode
           ? 'Выбрано: ${_selectedProjectIds.length + _selectedCabinetIds.length}'
@@ -825,12 +823,6 @@ class ShuListScreenState extends State<ShuListScreen>
         ),
       ),
     ),
-      bottomNavBar: widget.isTab
-          ? null
-          : BottomNavBar(
-              currentIndex: _currentIndex,
-              onTap: _onNavTapped,
-            ),
       floatingActionButton: null,
     );
   }
@@ -1374,22 +1366,6 @@ class ShuListScreenState extends State<ShuListScreen>
         return Icons.error_outline;
       default:
         return Icons.help_outline;
-    }
-  }
-
-  void _onNavTapped(int index) {
-    switch (index) {
-      case 0:
-        break;
-      case 1:
-        Navigator.pushReplacementNamed(context, '/knowledge');
-        break;
-      case 2:
-        Navigator.pushReplacementNamed(context, '/chats');
-        break;
-      case 3:
-        Navigator.pushReplacementNamed(context, '/profile');
-        break;
     }
   }
 }

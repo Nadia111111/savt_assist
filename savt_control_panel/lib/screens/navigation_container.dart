@@ -44,6 +44,7 @@ class MainNavigationContainerState extends State<MainNavigationContainer>
     WidgetsBinding.instance.addObserver(this);
     _currentIndex = _isGuestMode ? 0 : widget.initialTab;
     _pageController = PageController(initialPage: _currentIndex);
+    AppNavState.instance.setTab(_currentIndex);
   }
 
   @override
@@ -61,21 +62,7 @@ class MainNavigationContainerState extends State<MainNavigationContainer>
   }
 
   void setTab(int index) {
-    if (mounted && index != _currentIndex && !_isPageAnimating) {
-      _pageController
-          .jumpToPage(index); // Используем jumpToPage вместо animateToPage
-      setState(() {
-        _currentIndex = index;
-      });
-    }
-  }
-
-  void refreshChatsList() {
-    _chatsKey.currentState?.loadChats();
-  }
-
-  void _onTabTapped(int index) {
-    if (_isPageAnimating) return;
+    if (!mounted || _isPageAnimating) return;
 
     // Если нажимаем на уже активную вкладку - скроллим наверх
     if (_currentIndex == index) {
@@ -101,16 +88,21 @@ class MainNavigationContainerState extends State<MainNavigationContainer>
       return;
     }
 
-    // Мгновенное переключение без анимации
     _pageController.jumpToPage(index);
     setState(() {
       _currentIndex = index;
     });
+    AppNavState.instance.setTab(index);
+  }
+
+  void refreshChatsList() {
+    _chatsKey.currentState?.loadChats();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: PageView(
         controller: _pageController,
         physics: const NeverScrollableScrollPhysics(),
@@ -119,18 +111,10 @@ class MainNavigationContainerState extends State<MainNavigationContainer>
             setState(() {
               _currentIndex = index;
             });
+            AppNavState.instance.setTab(index);
           }
         },
         children: _buildPages(),
-      ),
-      bottomNavigationBar: BottomNavBar(
-        currentIndex: _currentIndex,
-        onTap: _onTabTapped,
-        isGuestMode: _isGuestMode,
-        onScannerTap: () async {
-          await Navigator.pushNamed(context, '/qr-scanner');
-          _shuListKey.currentState?.refreshCabinets();
-        },
       ),
     );
   }

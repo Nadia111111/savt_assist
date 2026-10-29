@@ -7,7 +7,6 @@ import '../theme/app_colors.dart';
 import '../services/app_theme.dart';
 import '../widgets/gradient_scaffold.dart';
 import '../widgets/skeletons.dart';
-import '../widgets/bottom_nav_bar.dart';
 import '../widgets/animated_card.dart';
 import '../main.dart';
 import 'notification_settings_screen.dart';
@@ -29,7 +28,6 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class ProfileScreenState extends State<ProfileScreen> {
-  final int _currentIndex = 3;
   Map<String, dynamic> _userData = {};
   bool _isLoading = true;
   bool _isLoadingUserData = false;
@@ -169,7 +167,7 @@ class ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return GradientScaffold(
-      showBottomNavBar: !widget.isTab,
+      showBottomNavBar: true,
       currentNavIndex: 3,
       appBarTitle: 'Профиль',
       showBackButton: false,
@@ -220,12 +218,6 @@ class ProfileScreenState extends State<ProfileScreen> {
           },
         ),
       ),
-      bottomNavBar: widget.isTab
-          ? null
-          : BottomNavBar(
-              currentIndex: _currentIndex,
-              onTap: _onNavTapped,
-            ),
     );
   }
 
@@ -685,22 +677,6 @@ class ProfileScreenState extends State<ProfileScreen> {
       trailing: const Icon(Icons.chevron_right),
       onTap: onTap,
     );
-  }
-
-  void _onNavTapped(int index) {
-    switch (index) {
-      case 0:
-        Navigator.pushReplacementNamed(context, '/shu-list');
-        break;
-      case 1:
-        Navigator.pushReplacementNamed(context, '/knowledge');
-        break;
-      case 2:
-        Navigator.pushReplacementNamed(context, '/chats');
-        break;
-      case 3:
-        break;
-    }
   }
 
   void _showHelpDialog() {
