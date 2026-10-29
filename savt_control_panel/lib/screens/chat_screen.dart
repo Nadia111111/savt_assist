@@ -98,6 +98,11 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    if (kIsWeb) {
+      try {
+        BrowserContextMenu.disableContextMenu();
+      } catch (_) {}
+    }
     _realChatId = int.tryParse(widget.chatId) ?? 0;
     if (_realChatId > 0) {
       PreferencesService.saveLastChatId(_realChatId);
@@ -700,6 +705,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    if (kIsWeb) {
+      try {
+        BrowserContextMenu.enableContextMenu();
+      } catch (_) {}
+    }
     WebPasteListener.dispose();
     _messageKeys.clear();
     _pollingTimer?.cancel();
@@ -728,6 +738,14 @@ void _showError(String message) {
    }
 
    void _toggleMessageSelection(String messageId) {
+     final msg = _messages.firstWhere(
+       (m) => m.id == messageId,
+       orElse: () => ChatMessage(id: '', isOwn: false, time: ''),
+     );
+     if (!msg.isOwn) {
+       _showError('Нельзя удалять сообщения собеседника');
+       return;
+     }
      setState(() {
        if (_selectedMessages.contains(messageId)) {
          _selectedMessages.remove(messageId);
@@ -750,25 +768,25 @@ void _showError(String message) {
 Future<void> _deleteSelectedMessages() async {
       if (_selectedMessages.isEmpty) return;
       final ownSelected = _messages.where((m) => _selectedMessages.contains(m.id) && m.isOwn).toList();
-      final otherSelected = _messages.where((m) => _selectedMessages.contains(m.id) && !m.isOwn).toList();
       if (ownSelected.isEmpty) {
-        _showError('Нельзя удалить чужие сообщения');
+        _showError('Нельзя удалять сообщения собеседника');
         _exitSelectionMode();
         return;
       }
+      final count = ownSelected.length;
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Удалить сообщения'),
-          content: Text('Удалить ${ownSelected.length} сообщение(я)?${otherSelected.isNotEmpty ? " (${otherSelected.length} чужое сообщение${otherSelected.length > 1 ? "а" : ""})" : ""}'),
+          content: Text('Удалить $count сообщени${count == 1 ? "е" : (count > 4 ? "й" : "я")}?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
               child: const Text('Отмена'),
             ),
-            TextButton(
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () => Navigator.pop(context, true),
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
               child: const Text('Удалить'),
             ),
           ],
@@ -802,7 +820,11 @@ Future<void> _deleteSelectedMessages() async {
       }
 
       // Remove from cache
-      await DbService.instance.deleteCachedMessages(chatIdToUse, stringIdsToDelete);
+      if (!kIsWeb) {
+        try {
+          await DbService.instance.deleteCachedMessages(chatIdToUse, stringIdsToDelete);
+        } catch (_) {}
+      }
 
       if (idsToDelete.isNotEmpty && chatIdToUse > 0) {
         try {
@@ -2219,7 +2241,7 @@ Future<void> _deleteSelectedMessages() async {
                   });
                 },
               ),
-            if (!msg.isPending)
+            if (!msg.isPending && msg.isOwn)
               ListTile(
                 leading: const Icon(Icons.check_circle_outline),
                 title: const Text('Выбрать'),
@@ -2241,51 +2263,99 @@ Future<void> _deleteSelectedMessages() async {
               ListTile(
                 leading: const Icon(Icons.delete, color: Colors.red),
                 title: const Text('Удалить', style: TextStyle(color: Colors.red)),
-                onTap: () async {
+                onTap: () {
                   Navigator.pop(context);
-                  final msgId = int.tryParse(msg.id);
-                  final chatIdToUse = _realChatId > 0 ? _realChatId : (int.tryParse(widget.chatId) ?? 0);
-                  
-                  _deletedMessageIds.add(msg.id);
-
-                  // Optimistic removal from UI
-                  final backupMsg = msg;
-                  final backupIndex = _messages.indexOf(msg);
-                  setState(() {
-                    _messages.removeWhere((m) => m.id == msg.id);
-                    _pinnedMessages.removeWhere((m) => m.id == msg.id);
-                  });
-
-                  // Remove from local database cache
-                  await DbService.instance.deleteCachedMessage(chatIdToUse, msg.id);
-                  if (msg.isPending) {
-                    OfflineService().removeMessageFromQueue(widget.chatId, msg.id);
-                  }
-
-                  if (msgId != null && chatIdToUse > 0) {
-                    try {
-                      await chatService.deleteMessage(chatIdToUse, msgId);
-                    } catch (e) {
-                      debugPrint('Error deleting single message: $e');
-                      _deletedMessageIds.remove(msg.id);
-                      if (mounted) {
-                        setState(() {
-                          if (backupIndex >= 0 && backupIndex <= _messages.length) {
-                            _messages.insert(backupIndex, backupMsg);
-                          } else {
-                            _messages.add(backupMsg);
-                          }
-                        });
-                        _showError('Не удалось удалить сообщение: $e');
-                      }
-                    }
-                  }
+                  _confirmDeleteSingleMessage(msg);
                 },
               ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _confirmDeleteSingleMessage(ChatMessage msg) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить сообщение?'),
+        content: const Text('Вы уверены, что хотите удалить это сообщение? Это действие нельзя отменить.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await _deleteSingleMessage(msg);
+    }
+  }
+
+  Future<void> _deleteSingleMessage(ChatMessage msg) async {
+    if (!msg.isOwn) {
+      _showError('Нельзя удалять сообщения собеседника');
+      return;
+    }
+    final msgId = int.tryParse(msg.id);
+    final chatIdToUse = _realChatId > 0 ? _realChatId : (int.tryParse(widget.chatId) ?? 0);
+    print('🔵 [ChatScreen] _deleteSingleMessage: msg.id="${msg.id}" (parsed=$msgId), chatIdToUse=$chatIdToUse');
+    
+    _deletedMessageIds.add(msg.id);
+
+    // Optimistic removal from UI
+    final backupMsg = msg;
+    final backupIndex = _messages.indexOf(msg);
+    setState(() {
+      _messages.removeWhere((m) => m.id == msg.id);
+      _pinnedMessages.removeWhere((m) => m.id == msg.id);
+    });
+
+    // Remove from local database cache
+    if (!kIsWeb) {
+      try {
+        await DbService.instance.deleteCachedMessage(chatIdToUse, msg.id);
+      } catch (_) {}
+    }
+    if (msg.isPending) {
+      OfflineService().removeMessageFromQueue(widget.chatId, msg.id);
+    }
+
+    if (msgId != null && chatIdToUse > 0) {
+      try {
+        await chatService.deleteMessage(chatIdToUse, msgId);
+        print('🟢 [ChatScreen] Message $msgId deleted successfully');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Сообщение удалено'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        print('🔴 [ChatScreen] Error deleting single message: $e');
+        _deletedMessageIds.remove(msg.id);
+        if (mounted) {
+          setState(() {
+            if (backupIndex >= 0 && backupIndex <= _messages.length) {
+              _messages.insert(backupIndex, backupMsg);
+            } else {
+              _messages.add(backupMsg);
+            }
+          });
+          _showError('Не удалось удалить сообщение: $e');
+        }
+      }
+    } else {
+      print('⚠️ [ChatScreen] msgId is null or chatIdToUse <= 0, skipping API delete');
+    }
   }
 
 Widget _buildAppBarHeader() {
@@ -2669,6 +2739,22 @@ Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (!msg.isOwn)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Text(
+                              msg.displaySenderName,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: textColor == Colors.white
+                                    ? Colors.cyanAccent.shade100
+                                    : (theme.brightness == Brightness.dark
+                                        ? theme.colorScheme.primary
+                                        : const Color(0xFF0058A8)),
+                              ),
+                            ),
+                          ),
                         if (msg.replyTo != null)
                           GestureDetector(
                             onTap: () => _scrollToMessage(msg.replyTo!.id),
@@ -2691,7 +2777,7 @@ Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              msg.replyTo!.isOwn ? 'Вы' : 'Собеседник',
+                              msg.replyTo!.isOwn ? 'Вы' : msg.replyTo!.displaySenderName,
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 11,
@@ -2780,6 +2866,7 @@ Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
                                       heroTag: heroTag,
                                       onDownloadRequest: (url) => uploadService.downloadFile(url),
                                       onSendEdited: (editedPath) => _sendAttachment(editedPath),
+                                      onDelete: msg.isOwn ? () => _deleteSingleMessage(msg) : null,
                                     ),
                                     transitionsBuilder: (context, animation, secondaryAnimation, child) {
                                       return FadeTransition(opacity: animation, child: child);

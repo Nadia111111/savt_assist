@@ -1,21 +1,29 @@
 // lib/widgets/auth_image.dart
 import 'dart:io';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:crypto/crypto.dart';
 import '../services/api_client.dart';
+import 'web_html_image.dart';
 import '../main.dart'; // uploadService
 
 class AuthImage extends StatefulWidget {
   final String url;
   final BoxFit fit;
+  final double? width;
+  final double? height;
 
   static final Map<String, Uint8List> _imageCache = {};
 
-  const AuthImage({super.key, required this.url, this.fit = BoxFit.cover});
+  const AuthImage({
+    super.key,
+    required this.url,
+    this.fit = BoxFit.cover,
+    this.width,
+    this.height,
+  });
 
   static String _cleanUrl(String url) {
     String clean = url.split('?').first;
@@ -220,28 +228,37 @@ class _AuthImageState extends State<AuthImage> {
   Widget build(BuildContext context) {
     final cleanUrl = AuthImage._cleanUrl(widget.url);
     if (AuthImage._imageCache.containsKey(cleanUrl)) {
-      return Image.memory(AuthImage._imageCache[cleanUrl]!, fit: widget.fit);
+      return Image.memory(
+        AuthImage._imageCache[cleanUrl]!,
+        fit: widget.fit,
+        width: widget.width,
+        height: widget.height,
+      );
     }
 
     if (kIsWeb) {
       final fullUrl = widget.url.startsWith('http')
           ? widget.url
           : '${ApiClient.baseUrl}${widget.url.startsWith('/') ? '' : '/'}${widget.url}';
-      return Image.network(
-        fullUrl,
-        fit: widget.fit,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return const Center(
-            child: SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final hasBoundedWidth = constraints.hasBoundedWidth && constraints.maxWidth != double.infinity;
+          final hasBoundedHeight = constraints.hasBoundedHeight && constraints.maxHeight != double.infinity;
+
+          final effectiveWidth = widget.width ?? (hasBoundedWidth ? constraints.maxWidth : (widget.fit == BoxFit.contain ? double.infinity : 240.0));
+          final effectiveHeight = widget.height ?? (hasBoundedHeight ? constraints.maxHeight : (widget.fit == BoxFit.contain ? double.infinity : 200.0));
+
+          return SizedBox(
+            width: effectiveWidth,
+            height: effectiveHeight,
+            child: buildWebHtmlImage(
+              url: fullUrl,
+              fit: widget.fit,
+              errorWidget: const Center(
+                child: Icon(Icons.broken_image, color: Colors.grey),
+              ),
             ),
           );
-        },
-        errorBuilder: (context, error, stackTrace) {
-          return const Center(child: Icon(Icons.broken_image, color: Colors.grey));
         },
       );
     }

@@ -235,6 +235,170 @@ class UserEventsService {
     });
   }
 
+  // === ЧАТЫ WS (/user-events/chats) ===
+
+  WebSocketChannel? _chatsChannel;
+  Timer? _chatsReconnectTimer;
+  Timer? _chatsPingTimer;
+  bool _isChatsIntentionallyClosed = false;
+  bool _isChatsAccessRevoked = false;
+  bool get isChatsAccessRevoked => _isChatsAccessRevoked;
+
+  void Function(Map<String, dynamic> data)? onChatUpdated;
+
+  Future<void> startChats() async {
+    await stopChats();
+    _isChatsIntentionallyClosed = false;
+    _isChatsAccessRevoked = false;
+    await _connectChats();
+  }
+
+  Future<void> stopChats() async {
+    _isChatsIntentionallyClosed = true;
+    _chatsPingTimer?.cancel();
+    _chatsPingTimer = null;
+    _chatsReconnectTimer?.cancel();
+    _chatsReconnectTimer = null;
+    await _chatsChannel?.sink.close();
+    _chatsChannel = null;
+  }
+
+  void _resetChatsPingTimer() {
+    _chatsPingTimer?.cancel();
+    _chatsPingTimer = Timer(const Duration(seconds: 25), () {
+      if (_chatsChannel != null) {
+        debugPrint('⏱️ [UserEvents:chats] Нет ping 25с, переподключение');
+        _chatsChannel?.sink.close();
+        _chatsChannel = null;
+        _scheduleChatsReconnect();
+      }
+    });
+  }
+
+  Future<void> _connectChats({String? existingTicket}) async {
+    if (_isChatsIntentionallyClosed || _isChatsAccessRevoked) return;
+
+    final token = await _tokenStorage.getAccessToken();
+    if (token == null || token.isEmpty) {
+      debugPrint('⚠️ [UserEvents:chats] Нет access token, пропуск подключения к сокету чатов');
+      return;
+    }
+
+    String? ticket = existingTicket;
+    if (ticket == null || ticket.isEmpty) {
+      final ticketRes = await fetchTicket();
+      if (ticketRes.isForbidden) {
+        debugPrint('🚫 [UserEvents:chats] 403 при получении билета. Прекращаем переподключение.');
+        _isChatsAccessRevoked = true;
+        _chatsReconnectTimer?.cancel();
+        _chatsReconnectTimer = null;
+        return;
+      }
+
+      if (!ticketRes.isSuccess) {
+        debugPrint('⚠️ [UserEvents:chats] Билет не получен (${ticketRes.error}), планируем переподключение');
+        _scheduleChatsReconnect();
+        return;
+      }
+      ticket = ticketRes.ticket!;
+    }
+
+    try {
+      final wsUrl = '${ApiClient.baseUrl}/user-events/chats'
+          .replaceFirst('https://', 'wss://')
+          .replaceFirst('http://', 'ws://');
+      final channel = WebSocketChannel.connect(
+          Uri.parse(wsUrl).replace(queryParameters: {'ticket': ticket}));
+      _chatsChannel = channel;
+      _resetChatsPingTimer();
+
+      channel.stream.listen(
+        (raw) {
+          _resetChatsPingTimer();
+          try {
+            final event = jsonDecode(raw as String) as Map<String, dynamic>;
+            final type = event['type']?.toString();
+            if (type == 'ping') {
+              debugPrint('🏓 [UserEvents:chats] ping');
+              return;
+            }
+            if (type == 'connected') {
+              debugPrint('✅ [UserEvents:chats] connected');
+              return;
+            }
+            if (type == 'chat.updated' || type == 'chat_updated') {
+              debugPrint('🔄 [UserEvents:chats] chat.updated: ${event['data']}');
+              final data = event['data'];
+              if (data is Map<String, dynamic>) {
+                onChatUpdated?.call(data);
+              } else if (event is Map<String, dynamic>) {
+                onChatUpdated?.call(event);
+              }
+            }
+          } on Exception catch (e) {
+            debugPrint('❌ [UserEvents:chats] parse error: $e');
+          }
+        },
+        onError: (error) {
+          debugPrint('❌ [UserEvents:chats] stream error: $error');
+          if (!_isChatsIntentionallyClosed && !_isChatsAccessRevoked) {
+            _handleChatsDisconnection(channel);
+          }
+        },
+        onDone: () {
+          final closeCode = channel.closeCode;
+          final closeReason = channel.closeReason;
+          debugPrint('ℹ️ [UserEvents:chats] stream closed: code=$closeCode, reason=$closeReason');
+          if (!_isChatsIntentionallyClosed && !_isChatsAccessRevoked) {
+            _handleChatsDisconnection(channel);
+          }
+        },
+      );
+    } on Exception catch (e) {
+      debugPrint('❌ [UserEvents:chats] connect error: $e');
+      if (!_isChatsIntentionallyClosed && !_isChatsAccessRevoked) {
+        _scheduleChatsReconnect();
+      }
+    }
+  }
+
+  void _handleChatsDisconnection(WebSocketChannel channel) async {
+    if (_chatsChannel != null && _chatsChannel != channel) return;
+    _chatsChannel = null;
+    _chatsPingTimer?.cancel();
+    _chatsPingTimer = null;
+    final closeCode = channel.closeCode;
+    debugPrint('ℹ️ [UserEvents:chats] Обработка разрыва соединения (closeCode=$closeCode)');
+    if (closeCode == 4401 || closeCode == 4403) {
+      debugPrint('⚠️ [UserEvents:chats] Сокет закрыт кодом $closeCode. Запрашиваем новый билет...');
+      final ticketRes = await fetchTicket();
+      if (ticketRes.isForbidden) {
+        debugPrint('🚫 [UserEvents:chats] 403 Forbidden. Прекращаем переподключение.');
+        _isChatsAccessRevoked = true;
+        _chatsReconnectTimer?.cancel();
+        _chatsReconnectTimer = null;
+        return;
+      }
+      if (ticketRes.isSuccess) {
+        debugPrint('🔄 [UserEvents:chats] Новый билет получен, переподключаемся...');
+        _connectChats(existingTicket: ticketRes.ticket);
+        return;
+      }
+      _scheduleChatsReconnect();
+      return;
+    }
+
+    _scheduleChatsReconnect();
+  }
+
+  void _scheduleChatsReconnect({String? existingTicket}) {
+    if (_isChatsAccessRevoked || _isChatsIntentionallyClosed) return;
+    _chatsReconnectTimer?.cancel();
+    _chatsReconnectTimer = Timer(const Duration(seconds: 5), () {
+      _connectChats(existingTicket: existingTicket);
+    });
+  }
+
   // === ТЕЛЕМЕТРИЯ ШКАФА ===
 
   Future<void> startTelemetry(int cabinetId) async {

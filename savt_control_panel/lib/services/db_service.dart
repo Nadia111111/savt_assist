@@ -140,6 +140,7 @@ class DbService {
   }
 
   Future<void> updateMessageTranscription(int chatId, String messageId, String transcription) async {
+    if (kIsWeb) return;
     final db = await instance.database;
     final results = await db.query(
       'messages',
@@ -159,6 +160,7 @@ class DbService {
   }
 
   Future<void> updateMessageReactions(int chatId, String messageId, Map<String, int> reactions) async {
+    if (kIsWeb) return;
     final db = await instance.database;
     final results = await db.query(
       'messages',
@@ -179,6 +181,7 @@ class DbService {
   }
 
   Future<void> deleteCachedMessage(int chatId, String messageId) async {
+    if (kIsWeb) return;
     try {
       final db = await instance.database;
       await db.delete(
@@ -192,6 +195,7 @@ class DbService {
   }
 
   Future<void> deleteCachedMessages(int chatId, List<String> messageIds) async {
+    if (kIsWeb) return;
     try {
       final db = await instance.database;
       final batch = db.batch();

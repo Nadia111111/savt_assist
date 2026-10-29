@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
@@ -19,6 +18,7 @@ class FullscreenImageViewer extends StatefulWidget {
   final Future<List<int>> Function(String url)? onDownloadRequest;
   final Function(String path)? onSendEdited;
   final VoidCallback? onShowInChat;
+  final VoidCallback? onDelete;
 
   const FullscreenImageViewer({
     super.key,
@@ -29,6 +29,7 @@ class FullscreenImageViewer extends StatefulWidget {
     this.onDownloadRequest,
     this.onSendEdited,
     this.onShowInChat,
+    this.onDelete,
   });
 
   @override
@@ -187,6 +188,35 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
             onPressed: _isDownloading ? null : _downloadImage,
             tooltip: 'Скачать на устройство',
           ),
+          if (widget.onDelete != null)
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Удалить сообщение?'),
+                    content: const Text('Это сообщение с файлом будет удалено для всех участников.'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Отмена'),
+                      ),
+                      FilledButton(
+                        style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          Navigator.pop(context);
+                          widget.onDelete!();
+                        },
+                        child: const Text('Удалить'),
+                      ),
+                    ],
+                  ),
+                );
+              },
+              tooltip: 'Удалить',
+            ),
         ],
       ),
       body: Stack(
@@ -195,7 +225,7 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
             child: InteractiveViewer(
               minScale: 0.5,
               maxScale: 4.0,
-              child: widget.heroTag != null
+              child: (!kIsWeb && widget.heroTag != null)
                   ? Hero(
                       tag: widget.heroTag!,
                       flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {

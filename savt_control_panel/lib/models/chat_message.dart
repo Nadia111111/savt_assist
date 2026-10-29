@@ -106,6 +106,7 @@ class ChatMessage {
   final List<ChatAttachment> attachments;
   final Map<String, int> reactions;
   final int? senderId;
+  final String? senderName;
   final String? transcription;
   final bool isPending;
   final bool isRead;
@@ -124,11 +125,22 @@ class ChatMessage {
     this.attachments = const [],
     this.reactions = const {},
     this.senderId,
+    this.senderName,
     this.transcription,
     this.isPending = false,
     this.isRead = false,
     this.isDeleted = false,
   });
+
+  String get displaySenderName {
+    if (senderName != null && senderName!.trim().isNotEmpty) {
+      return senderName!.trim();
+    }
+    if (senderId == null || senderId == 0) {
+      return 'Ася';
+    }
+    return 'Оператор';
+  }
 
   static String? _parseTranscription(dynamic transcription) {
     if (transcription == null) return null;
@@ -216,14 +228,19 @@ class ChatMessage {
       }
     }
 
-    // Safely parse senderId
-    final rawSenderId = json['sender_id'];
+    // Safely parse senderId and senderName
+    final rawSenderId = json['sender_id'] ?? (json['sender'] is Map ? json['sender']['id'] : null) ?? json['user_id'];
     final parsedSenderId = rawSenderId is num 
         ? rawSenderId.toInt() 
         : (int.tryParse(rawSenderId?.toString() ?? ''));
+    final rawSenderName = json['sender_name'] ?? (json['sender'] is Map ? json['sender']['name'] : null);
+    final parsedSenderName = rawSenderName?.toString();
 
-    // Check isOwn safely (compare sender_id against myUserId)
-    final isOwnMsg = parsedSenderId != null && parsedSenderId == myUserId;
+    // Check isOwn safely (compare sender_id against myUserId or server is_own flag)
+    final isOwnMsg = json['is_own'] == true ||
+        json['is_own']?.toString() == '1' ||
+        json['is_own']?.toString().toLowerCase() == 'true' ||
+        (parsedSenderId != null && myUserId > 0 && parsedSenderId == myUserId);
     final isReadMsg = json['is_read'] == true || json['is_read']?.toString() == '1' || json['is_read']?.toString().toLowerCase() == 'true';
 
     final isDeletedMsg = json['deleted_at'] != null;
@@ -240,6 +257,7 @@ class ChatMessage {
       attachments: parsedAttachments,
       reactions: parsedReactions,
       senderId: parsedSenderId,
+      senderName: parsedSenderName,
       transcription: _parseTranscription(json['transcription']),
       isPending: json['is_pending'] == true || json['is_pending']?.toString() == '1' || json['is_pending']?.toString().toLowerCase() == 'true',
       isRead: isReadMsg,
@@ -260,6 +278,7 @@ class ChatMessage {
     List<ChatAttachment>? attachments,
     Map<String, int>? reactions,
     int? senderId,
+    String? senderName,
     String? transcription,
     bool? isPending,
     bool? isRead,
@@ -278,6 +297,7 @@ class ChatMessage {
       attachments: attachments ?? this.attachments,
       reactions: reactions ?? this.reactions,
       senderId: senderId ?? this.senderId,
+      senderName: senderName ?? this.senderName,
       transcription: transcription ?? this.transcription,
       isPending: isPending ?? this.isPending,
       isRead: isRead ?? this.isRead,

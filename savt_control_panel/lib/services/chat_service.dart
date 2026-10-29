@@ -434,13 +434,18 @@ class ChatService {
   }
 
   Future<void> deleteMessage(int chatId, int messageId) async {
-    // Delete from local cache immediately
-    await DbService.instance.deleteCachedMessage(chatId, messageId.toString());
+    print('🔵 [ChatService] deleteMessage chatId=$chatId, messageId=$messageId');
+    if (!kIsWeb) {
+      try {
+        await DbService.instance.deleteCachedMessage(chatId, messageId.toString());
+      } catch (_) {}
+    }
     try {
       if (chatId > 0) {
         try {
           final res = await _apiClient.dio.delete('/chats/$chatId/messages/$messageId');
           if (res.statusCode != null && res.statusCode! >= 200 && res.statusCode! < 300) {
+            print('🟢 [ChatService] deleteMessage /chats/$chatId/messages/$messageId success (${res.statusCode})');
             return;
           }
         } on DioException catch (e) {
@@ -456,6 +461,7 @@ class ChatService {
             data: {'message_ids': [messageId]},
           );
           if (res.statusCode != null && res.statusCode! >= 200 && res.statusCode! < 300) {
+            print('🟢 [ChatService] bulk delete /chats/$chatId/messages success (${res.statusCode})');
             return;
           }
         } on DioException catch (e) {
@@ -466,16 +472,22 @@ class ChatService {
       }
       // Fallback endpoint if /chats/$chatId/... is not used
       await _apiClient.dio.delete('/messages/$messageId');
+      print('🟢 [ChatService] deleteMessage fallback /messages/$messageId completed');
     } on DioException catch (e) {
+      print('🔴 [ChatService] deleteMessage error: $e');
       throw _handleError(e);
     }
   }
 
   Future<void> deleteMessages(int chatId, List<int> messageIds) async {
     if (messageIds.isEmpty) return;
-    // Delete from local cache immediately
-    await DbService.instance.deleteCachedMessages(
-        chatId, messageIds.map((id) => id.toString()).toList());
+    print('🔵 [ChatService] deleteMessages chatId=$chatId, count=${messageIds.length}');
+    if (!kIsWeb) {
+      try {
+        await DbService.instance.deleteCachedMessages(
+            chatId, messageIds.map((id) => id.toString()).toList());
+      } catch (_) {}
+    }
     try {
       if (chatId > 0) {
         try {
@@ -484,6 +496,7 @@ class ChatService {
             data: {'message_ids': messageIds},
           );
           if (res.statusCode != null && res.statusCode! >= 200 && res.statusCode! < 300) {
+            print('🟢 [ChatService] deleteMessages bulk success (${res.statusCode})');
             return;
           }
         } on DioException catch (e) {
@@ -507,6 +520,7 @@ class ChatService {
         } catch (_) {}
       }
     } on DioException catch (e) {
+      print('🔴 [ChatService] deleteMessages error: $e');
       throw _handleError(e);
     }
   }
