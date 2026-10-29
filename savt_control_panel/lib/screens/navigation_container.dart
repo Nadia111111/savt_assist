@@ -44,7 +44,11 @@ class MainNavigationContainerState extends State<MainNavigationContainer>
     WidgetsBinding.instance.addObserver(this);
     _currentIndex = _isGuestMode ? 0 : widget.initialTab;
     _pageController = PageController(initialPage: _currentIndex);
-    AppNavState.instance.setTab(_currentIndex);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        AppNavState.instance.setTab(_currentIndex);
+      }
+    });
   }
 
   @override
@@ -88,7 +92,9 @@ class MainNavigationContainerState extends State<MainNavigationContainer>
       return;
     }
 
-    _pageController.jumpToPage(index);
+    if (_pageController.hasClients) {
+      _pageController.jumpToPage(index);
+    }
     setState(() {
       _currentIndex = index;
     });

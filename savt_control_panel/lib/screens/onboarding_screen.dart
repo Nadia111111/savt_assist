@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_spacing.dart';
 import '../widgets/gradient_scaffold.dart';
 import '../widgets/responsive_layout.dart';
+import '../widgets/bottom_nav_bar.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -50,7 +51,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    AppNavState.instance.setRouteExcluded(true);
+    AppNavState.instance.pushConfig(
+      id: this,
+      showBottomBar: false,
+    );
+  }
+
+  @override
   void dispose() {
+    AppNavState.instance.removeConfig(this);
+    AppNavState.instance.setRouteExcluded(false);
     _pageController.dispose();
     super.dispose();
   }

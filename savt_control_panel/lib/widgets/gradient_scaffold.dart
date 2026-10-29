@@ -68,7 +68,9 @@ class _GradientScaffoldState extends State<GradientScaffold> {
   @override
   void initState() {
     super.initState();
-    _syncNavConfig();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncNavConfig();
+    });
   }
 
   @override
@@ -81,7 +83,9 @@ class _GradientScaffoldState extends State<GradientScaffold> {
         oldWidget.currentNavIndex != widget.currentNavIndex ||
         oldWidget.isScannerActive != widget.isScannerActive ||
         oldWidget.bottomNavBar != widget.bottomNavBar) {
-      _syncNavConfig();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _syncNavConfig();
+      });
     }
   }
 

@@ -1,5 +1,6 @@
 // lib/widgets/bottom_nav_bar.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import '../services/offline_service.dart';
 import '../screens/navigation_container.dart';
 import '../main.dart';
@@ -316,18 +317,34 @@ class AppNavState extends ChangeNotifier {
   bool _isVisible = true;
   int _currentIndex = 0;
   bool _isScannerActive = false;
-  bool _isRouteExcluded = false;
+  bool _isRouteExcluded = true;
 
   bool get isVisible => _isVisible && !_isRouteExcluded;
   int get currentIndex => _currentIndex;
   bool get isScannerActive => _isScannerActive;
 
   final List<AppNavConfig> _configStack = [];
+  bool _isNotifyingScheduled = false;
+
+  void _notifySafely() {
+    final binding = WidgetsBinding.instance;
+    if (binding.schedulerPhase != SchedulerPhase.idle) {
+      if (!_isNotifyingScheduled) {
+        _isNotifyingScheduled = true;
+        binding.addPostFrameCallback((_) {
+          _isNotifyingScheduled = false;
+          notifyListeners();
+        });
+      }
+    } else {
+      notifyListeners();
+    }
+  }
 
   void setRouteExcluded(bool excluded) {
     if (_isRouteExcluded != excluded) {
       _isRouteExcluded = excluded;
-      notifyListeners();
+      _notifySafely();
     }
   }
 
@@ -389,21 +406,21 @@ class AppNavState extends ChangeNotifier {
     if (_currentIndex != index || _isScannerActive) {
       _currentIndex = index;
       _isScannerActive = false;
-      notifyListeners();
+      _notifySafely();
     }
   }
 
   void setScannerActive(bool active) {
     if (_isScannerActive != active) {
       _isScannerActive = active;
-      notifyListeners();
+      _notifySafely();
     }
   }
 
   void setVisible(bool visible) {
     if (_isVisible != visible) {
       _isVisible = visible;
-      notifyListeners();
+      _notifySafely();
     }
   }
 
@@ -416,7 +433,7 @@ class AppNavState extends ChangeNotifier {
         _currentIndex = top.currentIndex!;
       }
     }
-    notifyListeners();
+    _notifySafely();
   }
 }
 
@@ -451,7 +468,7 @@ class AppRouteObserver extends NavigatorObserver {
     if (route == null) return;
     final name = route.settings.name;
     if (name != null) {
-      if (_excludedRoutes.contains(name)) {
+      if (name == '/' || name.startsWith('/onboarding') || _excludedRoutes.contains(name)) {
         AppNavState.instance.setRouteExcluded(true);
         return;
       }
@@ -591,8 +608,11 @@ class AppBottomNavBar extends StatelessWidget {
   static void navigateToTab(BuildContext context, int index) {
     AppNavState.instance.setTab(index);
     final state = MainNavigationContainer.globalKey.currentState;
-    if (state != null) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
+    if (state != null && state.mounted) {
+      final nav = Navigator.of(context);
+      if (nav.canPop()) {
+        nav.popUntil((route) => route.isFirst);
+      }
       state.setTab(index);
     } else {
       Navigator.of(context).pushNamedAndRemoveUntil(
