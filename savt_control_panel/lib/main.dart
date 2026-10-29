@@ -884,31 +884,31 @@ class _ControlPanelAppState extends State<ControlPanelApp> {
               case '/notes':
                 if (_isGuestModeSafe) {
                   return _buildRoute(
-                      const MainNavigationContainer(initialTab: 0));
+                      MainNavigationContainer(key: MainNavigationContainer.globalKey, initialTab: 0));
                 }
                 return _buildRoute(const NotesScreen());
               case '/search-messages':
                 if (_isGuestModeSafe) {
                   return _buildRoute(
-                      const MainNavigationContainer(initialTab: 0));
+                      MainNavigationContainer(key: MainNavigationContainer.globalKey, initialTab: 0));
                 }
                 return _buildRoute(const SearchMessagesScreen());
               case '/all-documents':
                 if (_isGuestModeSafe) {
                   return _buildRoute(
-                      const MainNavigationContainer(initialTab: 0));
+                      MainNavigationContainer(key: MainNavigationContainer.globalKey, initialTab: 0));
                 }
                 return _buildRoute(const MyDocumentsScreen());
               case '/notifications':
                 if (_isGuestModeSafe) {
                   return _buildRoute(
-                      const MainNavigationContainer(initialTab: 0));
+                      MainNavigationContainer(key: MainNavigationContainer.globalKey, initialTab: 0));
                 }
                 return _buildRoute(const NotificationsScreen());
               case '/operator-panel':
                 if (_isGuestModeSafe) {
                   return _buildRoute(
-                      const MainNavigationContainer(initialTab: 0));
+                      MainNavigationContainer(key: MainNavigationContainer.globalKey, initialTab: 0));
                 }
                 return _buildRoute(const OperatorPanelScreen());
               case '/qr-scanner':
@@ -930,19 +930,19 @@ class _ControlPanelAppState extends State<ControlPanelApp> {
               case '/requests-hub':
                 if (_isGuestModeSafe) {
                   return _buildRoute(
-                      const MainNavigationContainer(initialTab: 0));
+                      MainNavigationContainer(key: MainNavigationContainer.globalKey, initialTab: 0));
                 }
                 return _buildRoute(const RequestsHubScreen());
               case '/my-requests':
                 if (_isGuestModeSafe) {
                   return _buildRoute(
-                      const MainNavigationContainer(initialTab: 0));
+                      MainNavigationContainer(key: MainNavigationContainer.globalKey, initialTab: 0));
                 }
                 return _buildRoute(const RequestsHubScreen(initialTab: 0));
               case '/reclamations':
                 if (_isGuestModeSafe) {
                   return _buildRoute(
-                      const MainNavigationContainer(initialTab: 0));
+                      MainNavigationContainer(key: MainNavigationContainer.globalKey, initialTab: 0));
                 }
                 return _buildRoute(const RequestsHubScreen(initialTab: 1));
               default:

@@ -7,7 +7,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/animated_background.dart';
-import '../screens/shu_list_screen.dart';
 import '../screens/forgot_password_screen.dart';
 import '../screens/password_reset_request_screen.dart';
 import '../main.dart';
@@ -754,15 +753,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
       await authService.login(fullPhone, _loginPasswordController.text,
           rememberMe: _rememberMe);
       if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          PageRouteBuilder(
-            pageBuilder: (_, __, ___) => const ShuListScreen(),
-            transitionsBuilder: (_, a, __, c) =>
-                FadeTransition(opacity: a, child: c),
-            transitionDuration: const Duration(milliseconds: 300),
-          ),
-        );
+        Navigator.pushReplacementNamed(context, '/home');
       }
     } catch (e) {
       _showErrorSnackBar(e.toString());

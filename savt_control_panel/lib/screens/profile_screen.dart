@@ -167,6 +167,7 @@ class ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return GradientScaffold(
+      isTab: widget.isTab,
       showBottomNavBar: true,
       currentNavIndex: 3,
       appBarTitle: 'Профиль',

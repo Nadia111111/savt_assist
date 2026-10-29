@@ -548,6 +548,7 @@ class ShuListScreenState extends State<ShuListScreen>
   @override
   Widget build(BuildContext context) {
     return GradientScaffold(
+      isTab: widget.isTab,
       showBottomNavBar: true,
       currentNavIndex: 0,
       appBarTitle: _isSelectionMode

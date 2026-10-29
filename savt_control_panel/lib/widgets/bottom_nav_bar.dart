@@ -31,7 +31,11 @@ class _BottomNavBarState extends State<BottomNavBar> {
   void _handleTap(int index) {
     if (_isProcessingTap) return;
     if (widget.currentIndex == index) {
-      widget.onTap(index);
+      try {
+        widget.onTap(index);
+      } catch (e) {
+        debugPrint('Nav tap error on same index: $e');
+      }
       return;
     }
 
@@ -39,7 +43,11 @@ class _BottomNavBarState extends State<BottomNavBar> {
       _isProcessingTap = true;
     });
 
-    widget.onTap(index);
+    try {
+      widget.onTap(index);
+    } catch (e) {
+      debugPrint('Nav tap error: $e');
+    }
 
     Future.delayed(const Duration(milliseconds: 200), () {
       if (mounted) {
@@ -113,6 +121,7 @@ class _BottomNavBarState extends State<BottomNavBar> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
+          mouseCursor: SystemMouseCursors.click,
           onTap: () => _handleTap(index),
           splashColor: theme.colorScheme.primary.withValues(alpha: 0.2),
           highlightColor: theme.colorScheme.primary.withValues(alpha: 0.1),
@@ -170,6 +179,7 @@ class _BottomNavBarState extends State<BottomNavBar> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
+          mouseCursor: SystemMouseCursors.click,
           onTap: () => _handleTap(index),
           splashColor: theme.colorScheme.primary.withValues(alpha: 0.2),
           highlightColor: theme.colorScheme.primary.withValues(alpha: 0.1),
@@ -263,6 +273,7 @@ class _BottomNavBarState extends State<BottomNavBar> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
+          mouseCursor: SystemMouseCursors.click,
           onTap: () {
             widget.onScannerTap?.call();
           },
@@ -432,6 +443,9 @@ class AppNavState extends ChangeNotifier {
       if (top.currentIndex != null && top.currentIndex! >= 0) {
         _currentIndex = top.currentIndex!;
       }
+    } else {
+      _isVisible = true;
+      _isScannerActive = false;
     }
     _notifySafely();
   }
@@ -608,15 +622,45 @@ class AppBottomNavBar extends StatelessWidget {
   static void navigateToTab(BuildContext context, int index) {
     AppNavState.instance.setTab(index);
     final state = MainNavigationContainer.globalKey.currentState;
+    final nav =
+        Navigator.maybeOf(context) ?? ControlPanelApp.navigatorKey.currentState;
+
     if (state != null && state.mounted) {
-      final nav = Navigator.of(context);
-      if (nav.canPop()) {
-        nav.popUntil((route) => route.isFirst);
+      if (nav != null && nav.canPop()) {
+        nav.popUntil((route) =>
+            route.isFirst ||
+            route.settings.name == '/home' ||
+            route.settings.name == '/shu-list' ||
+            route.settings.name == '/knowledge' ||
+            route.settings.name == '/chats' ||
+            route.settings.name == '/profile' ||
+            route.settings.name == '/about-us');
       }
       state.setTab(index);
     } else {
-      Navigator.of(context).pushNamedAndRemoveUntil(
-        '/home',
+      final isGuest = tokenStorage.isGuestMode;
+      String targetRoute = '/home';
+      if (isGuest) {
+        targetRoute = index == 1 ? '/about-us' : '/knowledge';
+      } else {
+        switch (index) {
+          case 1:
+            targetRoute = '/knowledge';
+            break;
+          case 2:
+            targetRoute = '/chats';
+            break;
+          case 3:
+            targetRoute = '/profile';
+            break;
+          default:
+            targetRoute = '/home';
+            break;
+        }
+      }
+
+      nav?.pushNamedAndRemoveUntil(
+        targetRoute,
         (route) => false,
       );
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -629,15 +673,17 @@ class AppBottomNavBar extends StatelessWidget {
       {bool isAlreadyOnScanner = false}) async {
     if (isAlreadyOnScanner) return;
 
-    final currentRoute = ModalRoute.of(context)?.settings.name;
-    if (currentRoute == '/qr-scanner') return;
-
-    AppNavState.instance.setScannerActive(true);
+    final nav =
+        Navigator.maybeOf(context) ?? ControlPanelApp.navigatorKey.currentState;
     final state = MainNavigationContainer.globalKey.currentState;
-    if (state != null) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
+    if (state != null && nav != null && nav.canPop()) {
+      nav.popUntil((route) =>
+          route.isFirst ||
+          route.settings.name == '/home' ||
+          route.settings.name == '/shu-list');
     }
-    await Navigator.of(context).pushNamed('/qr-scanner');
+    AppNavState.instance.setScannerActive(true);
+    await nav?.pushNamed('/qr-scanner');
   }
 
   @override

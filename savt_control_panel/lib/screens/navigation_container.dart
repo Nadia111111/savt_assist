@@ -59,6 +59,14 @@ class MainNavigationContainerState extends State<MainNavigationContainer>
   }
 
   @override
+  void didUpdateWidget(covariant MainNavigationContainer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialTab != widget.initialTab) {
+      setTab(widget.initialTab);
+    }
+  }
+
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _pageController.dispose();
@@ -94,6 +102,12 @@ class MainNavigationContainerState extends State<MainNavigationContainer>
 
     if (_pageController.hasClients) {
       _pageController.jumpToPage(index);
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _pageController.hasClients) {
+          _pageController.jumpToPage(index);
+        }
+      });
     }
     setState(() {
       _currentIndex = index;

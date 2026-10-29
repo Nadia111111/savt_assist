@@ -20,6 +20,7 @@ class GradientScaffold extends StatefulWidget {
   final bool useTransparentBody;
   final Widget? floatingActionButton;
   final bool showBackButton;
+  final bool isTab;
 
   const GradientScaffold({
     super.key,
@@ -38,6 +39,7 @@ class GradientScaffold extends StatefulWidget {
     this.useTransparentBody = false,
     this.floatingActionButton,
     this.showBackButton = true,
+    this.isTab = false,
   });
 
   @override
@@ -68,9 +70,11 @@ class _GradientScaffoldState extends State<GradientScaffold> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _syncNavConfig();
-    });
+    if (!widget.isTab) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _syncNavConfig();
+      });
+    }
   }
 
   @override
@@ -79,10 +83,11 @@ class _GradientScaffoldState extends State<GradientScaffold> {
     if (oldWidget.appBarTitle != widget.appBarTitle) {
       _isTitleExpanded = false;
     }
-    if (oldWidget.showBottomNavBar != widget.showBottomNavBar ||
-        oldWidget.currentNavIndex != widget.currentNavIndex ||
-        oldWidget.isScannerActive != widget.isScannerActive ||
-        oldWidget.bottomNavBar != widget.bottomNavBar) {
+    if (!widget.isTab &&
+        (oldWidget.showBottomNavBar != widget.showBottomNavBar ||
+            oldWidget.currentNavIndex != widget.currentNavIndex ||
+            oldWidget.isScannerActive != widget.isScannerActive ||
+            oldWidget.bottomNavBar != widget.bottomNavBar)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _syncNavConfig();
       });
@@ -90,6 +95,7 @@ class _GradientScaffoldState extends State<GradientScaffold> {
   }
 
   void _syncNavConfig() {
+    if (widget.isTab) return;
     if (widget.bottomNavBar != null || !widget.showBottomNavBar) {
       AppNavState.instance.pushConfig(
         id: this,
@@ -113,7 +119,9 @@ class _GradientScaffoldState extends State<GradientScaffold> {
 
   @override
   void dispose() {
-    AppNavState.instance.removeConfig(this);
+    if (!widget.isTab) {
+      AppNavState.instance.removeConfig(this);
+    }
     super.dispose();
   }
 

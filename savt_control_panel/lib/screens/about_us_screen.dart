@@ -24,6 +24,7 @@ class AboutUsScreenState extends State<AboutUsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return GradientScaffold(
+      isTab: widget.isTab,
       showBottomNavBar: true,
       currentNavIndex: 1,
       appBarTitle: 'О нас',
