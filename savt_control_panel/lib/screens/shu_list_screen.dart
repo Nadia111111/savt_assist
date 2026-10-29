@@ -550,6 +550,8 @@ class ShuListScreenState extends State<ShuListScreen>
   @override
   Widget build(BuildContext context) {
     return GradientScaffold(
+      showBottomNavBar: !widget.isTab,
+      currentNavIndex: 0,
       appBarTitle: _isSelectionMode
           ? 'Выбрано: ${_selectedProjectIds.length + _selectedCabinetIds.length}'
           : 'Мои проекты',

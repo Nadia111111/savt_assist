@@ -439,6 +439,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 @override
   Widget build(BuildContext context) {
     return GradientScaffold(
+      currentNavIndex: 3,
       appBarTitle: 'Уведомления',
       appBarAction: Wrap(
         spacing: 4,

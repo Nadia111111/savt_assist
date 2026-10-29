@@ -176,12 +176,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     if (_isLoading) {
       return const GradientScaffold(
+        currentNavIndex: 3,
         appBarTitle: 'Редактировать профиль',
         body: SkeletonDetail(),
       );
     }
 
     return GradientScaffold(
+      currentNavIndex: 3,
       appBarTitle: 'Редактировать профиль',
       appBarAction: OfflineAwareButton(
         onPressed: _saveProfile,

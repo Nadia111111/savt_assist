@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import '../services/network_service.dart';
 import 'animated_background.dart';
+import 'bottom_nav_bar.dart';
 
 class GradientScaffold extends StatefulWidget {
   final String? appBarTitle;
@@ -11,6 +12,9 @@ class GradientScaffold extends StatefulWidget {
   final Widget? appBarCustomHeader;
   final Widget body;
   final Widget? bottomNavBar;
+  final bool showBottomNavBar;
+  final int? currentNavIndex;
+  final bool isScannerActive;
   final bool useAdaptive;
   final bool enableDesktopCentering;
   final bool useTransparentBody;
@@ -26,6 +30,9 @@ class GradientScaffold extends StatefulWidget {
     this.appBarCustomHeader,
     required this.body,
     this.bottomNavBar,
+    this.showBottomNavBar = true,
+    this.currentNavIndex,
+    this.isScannerActive = false,
     this.useAdaptive = false,
     this.enableDesktopCentering = false,
     this.useTransparentBody = false,
@@ -166,7 +173,13 @@ class _GradientScaffoldState extends State<GradientScaffold> {
             ),
           ],
         ),
-        bottomNavigationBar: widget.bottomNavBar,
+        bottomNavigationBar: widget.bottomNavBar ??
+            (widget.showBottomNavBar
+                ? AppBottomNavBar(
+                    currentNavIndex: widget.currentNavIndex,
+                    isScannerActive: widget.isScannerActive,
+                  )
+                : null),
         floatingActionButton: widget.floatingActionButton,
       ),
     );

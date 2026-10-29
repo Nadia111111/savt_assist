@@ -507,6 +507,7 @@ class _ProjectCabinetsScreenState extends State<ProjectCabinetsScreen>
           }).toList();
 
     return GradientScaffold(
+      currentNavIndex: 0,
       appBarTitle: widget.projectName,
       showBackButton: true,
       appBarAction: IconButton(

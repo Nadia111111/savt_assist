@@ -175,6 +175,7 @@ class _RequestsHubScreenState extends State<RequestsHubScreen>
     final isServiceTab = _tabController.index == 0;
 
     return GradientScaffold(
+      currentNavIndex: 0,
       appBarTitle: 'Заявки',
       appBarAction: IconButton(
         icon: Icon(_isSearchExpanded ? Icons.close : Icons.search,

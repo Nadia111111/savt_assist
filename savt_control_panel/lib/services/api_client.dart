@@ -13,6 +13,7 @@ class ApiClient {
   static DateTime? _lastAuthRedirect;
 
   final Dio _dio;
+  final Dio _refreshDio;
   final TokenStorage _tokenStorage;
   bool _isRefreshing = false;
   final List<
@@ -35,6 +36,20 @@ class ApiClient {
           validateStatus: (status) {
             return status != null && status < 300;
           },
+        )),
+        _refreshDio = Dio(BaseOptions(
+          baseUrl: baseUrl,
+          connectTimeout: const Duration(seconds: 20),
+          receiveTimeout: const Duration(seconds: 20),
+          sendTimeout: const Duration(seconds: 20),
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            if (!kIsWeb) 'User-Agent': 'SAVT-Assist/1.0',
+          },
+          validateStatus: (status) {
+            return status != null && status < 300;
+          },
         )) {
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
@@ -44,33 +59,49 @@ class ApiClient {
 
         final path = options.uri.path;
         final isStatic = path.startsWith('/static/') || options.path.startsWith('/static/');
-        if (!isStatic) {
+
+        // Публичные эндпоинты авторизации не должны отправлять заголовок Authorization
+        final bool isPublicAuthEndpoint = path.contains('/auth/refresh') ||
+            path.contains('/auth/login') ||
+            path.contains('/auth/register/start') ||
+            path.contains('/auth/register/complete') ||
+            path.contains('/auth/admin-login') ||
+            path.contains('/auth/guest') ||
+            path.contains('/auth/password-reset/start') ||
+            path.contains('/auth/password-reset/complete');
+
+        final bool hasExplicitNullAuth = options.headers.containsKey('Authorization') &&
+            options.headers['Authorization'] == null;
+
+        if (!isStatic && !isPublicAuthEndpoint && !hasExplicitNullAuth) {
           final token = await _tokenStorage.getAccessToken();
           if (token != null && token.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $token';
           }
+        } else if (hasExplicitNullAuth || isPublicAuthEndpoint) {
+          options.headers.remove('Authorization');
         }
 
-        print('🔵 [API] ${options.method} ${options.uri}');
+        debugPrint('🔵 [API] ${options.method} ${options.uri}');
         if (options.data != null) {
-          print('📦 [API] Data: ${options.data}');
+          debugPrint('📦 [API] Data: ${options.data}');
         }
 
         return handler.next(options);
       },
       onResponse: (response, handler) {
-        print('🟢 [API] ${response.statusCode} ${response.requestOptions.uri}');
+        debugPrint('🟢 [API] ${response.statusCode} ${response.requestOptions.uri}');
         return handler.next(response);
       },
       onError: (error, handler) async {
-        print('🔴 [API] Error: ${error.type} - ${error.message}');
+        debugPrint('🔴 [API] Error: ${error.type} - ${error.message}');
         if (error.response != null) {
-          print('🔴 [API] Status: ${error.response?.statusCode}');
-          print('🔴 [API] Data: ${error.response?.data}');
+          debugPrint('🔴 [API] Status: ${error.response?.statusCode}');
+          debugPrint('🔴 [API] Data: ${error.response?.data}');
         }
 
         if (error.response?.statusCode == 404) {
-          print('⚠️ [API] Endpoint not found (404)');
+          debugPrint('⚠️ [API] Endpoint not found (404)');
           final emptyResponse = Response(
             requestOptions: error.requestOptions,
             statusCode: 404,
@@ -84,7 +115,7 @@ class ApiClient {
 
         if (!isStaticErr) {
           if (error.type == DioExceptionType.connectionError) {
-            print('Network connection error: ${error.message}');
+            debugPrint('Network connection error: ${error.message}');
             NetworkService.setOnline(false);
           } else if (error.type == DioExceptionType.unknown) {
             final errMsg = error.message?.toLowerCase() ?? '';
@@ -94,7 +125,7 @@ class ApiClient {
                 errMsg.contains('host') ||
                 errMsg.contains('unreachable') ||
                 errMsg.contains('refused')) {
-              print('Network-related unknown error: ${error.message}');
+              debugPrint('Network-related unknown error: ${error.message}');
               NetworkService.setOnline(false);
             } else {
               NetworkService.setOnline(true);
@@ -131,11 +162,11 @@ class ApiClient {
                 throw Exception('No refresh token');
               }
 
-              print('🔄 [API] Refreshing token...');
-              final response = await _dio.post(
-                '/auth/refresh',
+              debugPrint('🔄 [API] Refreshing token...');
+              // Запрос на обновление выполняется через отдельный чистый Dio без перехватчиков
+              final response = await _refreshDio.post(
+                '$apiPrefix/auth/refresh',
                 data: {'refresh_token': refreshToken},
-                options: Options(headers: {'Authorization': null}),
               );
 
               refreshSucceeded = true;
@@ -155,6 +186,11 @@ class ApiClient {
               return handler.resolve(retryResponse);
             } catch (e) {
               _isRefreshing = false;
+              if (e is DioException && e.response != null) {
+                debugPrint('🔴 [API] Refresh error: ${e.response?.statusCode} ${e.response?.data}');
+              } else {
+                debugPrint('❌ [API] Token refresh failed: $e');
+              }
               for (final entry in _queue) {
                 entry.reject(error);
               }
@@ -195,6 +231,14 @@ class ApiClient {
       if (_lastAuthRedirect == null ||
           now.difference(_lastAuthRedirect!).inSeconds > 2) {
         _lastAuthRedirect = now;
+
+        // Останавливаем фоновые сокеты и опросы при принудительном сбросе сессии
+        try {
+          userEventsService.stop();
+          userEventsService.stopTelemetry();
+          userEventsService.stopChats();
+        } catch (_) {}
+
         WidgetsBinding.instance.addPostFrameCallback((_) {
           final navigator = ControlPanelApp.navigatorKey.currentState;
           if (navigator != null && navigator.mounted) {
@@ -203,7 +247,7 @@ class ApiClient {
         });
       }
     } catch (e) {
-      print('⚠️ [API] Error during navigation to auth: $e');
+      debugPrint('⚠️ [API] Error during navigation to auth: $e');
     }
   }
 

@@ -110,6 +110,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
   @override
   Widget build(BuildContext context) {
     return GradientScaffold(
+      currentNavIndex: 0,
       appBarTitle: 'Избранное',
       appBarLeading: IconButton(
         icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 18),

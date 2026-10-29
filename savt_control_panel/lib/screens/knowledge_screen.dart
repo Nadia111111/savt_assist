@@ -365,6 +365,8 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
   @override
   Widget build(BuildContext context) {
     return GradientScaffold(
+      showBottomNavBar: !widget.isTab,
+      currentNavIndex: 1,
       appBarTitle: 'База знаний',
       showBackButton: false,
       appBarAction: Row(

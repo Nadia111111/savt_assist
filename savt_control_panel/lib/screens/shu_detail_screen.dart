@@ -473,18 +473,21 @@ class _ShuDetailScreenState extends State<ShuDetailScreen>
     final theme = Theme.of(context);
     if (_isLoading) {
       return const GradientScaffold(
+        currentNavIndex: 0,
         appBarTitle: 'Шкаф управления',
         body: SkeletonDetail(),
       );
     }
     if (_cabinetDetail == null) {
       return const GradientScaffold(
+        currentNavIndex: 0,
         appBarTitle: 'Ошибка',
         body: Center(child: Text('Не удалось загрузить данные')),
       );
     }
 
     return GradientScaffold(
+      currentNavIndex: 0,
       appBarTitle: _cabinetDetail!['custom_name']?.isNotEmpty == true
           ? _cabinetDetail!['custom_name']
           : _cabinetDetail!['type'],

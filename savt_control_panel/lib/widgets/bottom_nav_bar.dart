@@ -1,12 +1,15 @@
 // lib/widgets/bottom_nav_bar.dart
 import 'package:flutter/material.dart';
 import '../services/offline_service.dart';
+import '../screens/navigation_container.dart';
+import '../main.dart';
 
 class BottomNavBar extends StatefulWidget {
   final int currentIndex;
   final Function(int) onTap;
   final bool isGuestMode;
   final VoidCallback? onScannerTap;
+  final bool isScannerActive;
 
   const BottomNavBar({
     super.key,
@@ -14,6 +17,7 @@ class BottomNavBar extends StatefulWidget {
     required this.onTap,
     this.isGuestMode = false,
     this.onScannerTap,
+    this.isScannerActive = false,
   });
 
   @override
@@ -251,61 +255,121 @@ class _BottomNavBarState extends State<BottomNavBar> {
 
   Widget _buildCenterScannerButton(BuildContext context) {
     final theme = Theme.of(context);
+    final isScannerSelected = widget.isScannerActive || widget.currentIndex == -1;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Hero(
-        tag: 'scanner_to_add_shu',
-        flightShuttleBuilder: (
-          flightContext,
-          animation,
-          flightDirection,
-          fromHeroContext,
-          toHeroContext,
-        ) {
-          return Material(
-            color: Colors.transparent,
-            child: toHeroContext.widget,
-          );
-        },
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () {
-              widget.onScannerTap?.call();
-            },
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              width: 46,
-              height: 34,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    theme.colorScheme.primary,
-                    const Color(0xFF0A7AC2),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.35),
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            widget.onScannerTap?.call();
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            width: 46,
+            height: 34,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: isScannerSelected
+                    ? [
+                        theme.colorScheme.primary,
+                        const Color(0xFF00B4D8),
+                      ]
+                    : [
+                        theme.colorScheme.primary,
+                        const Color(0xFF0A7AC2),
+                      ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              child: const Center(
-                child: Icon(
-                  Icons.qr_code_scanner,
-                  color: Colors.white,
-                  size: 20,
+              borderRadius: BorderRadius.circular(12),
+              border: isScannerSelected
+                  ? Border.all(color: Colors.white, width: 2)
+                  : null,
+              boxShadow: [
+                BoxShadow(
+                  color: theme.colorScheme.primary
+                      .withValues(alpha: isScannerSelected ? 0.6 : 0.35),
+                  blurRadius: isScannerSelected ? 14 : 10,
+                  offset: const Offset(0, 3),
                 ),
+              ],
+            ),
+            child: const Center(
+              child: Icon(
+                Icons.qr_code_scanner,
+                color: Colors.white,
+                size: 20,
               ),
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Глобальная нижняя панель навигации для вторичных экранов приложения
+class AppBottomNavBar extends StatelessWidget {
+  final int? currentNavIndex;
+  final bool isScannerActive;
+
+  const AppBottomNavBar({
+    super.key,
+    this.currentNavIndex,
+    this.isScannerActive = false,
+  });
+
+  static void navigateToTab(BuildContext context, int index) {
+    final state = MainNavigationContainer.globalKey.currentState;
+    if (state != null) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      state.setTab(index);
+    } else {
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        '/home',
+        (route) => false,
+      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        MainNavigationContainer.globalKey.currentState?.setTab(index);
+      });
+    }
+  }
+
+  static Future<void> navigateToScanner(BuildContext context,
+      {bool isAlreadyOnScanner = false}) async {
+    if (isAlreadyOnScanner) return;
+
+    final currentRoute = ModalRoute.of(context)?.settings.name;
+    if (currentRoute == '/qr-scanner') return;
+
+    final state = MainNavigationContainer.globalKey.currentState;
+    if (state != null) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
+    await Navigator.of(context).pushNamed('/qr-scanner');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Скрываем нижнюю навигацию, когда открыта экранная клавиатура
+    final isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+    if (isKeyboardOpen) {
+      return const SizedBox.shrink();
+    }
+
+    final isGuest = tokenStorage.isGuestMode;
+    final int effectiveIndex = isScannerActive ? -1 : (currentNavIndex ?? -1);
+
+    return BottomNavBar(
+      currentIndex: effectiveIndex,
+      isGuestMode: isGuest,
+      isScannerActive: isScannerActive,
+      onTap: (index) => navigateToTab(context, index),
+      onScannerTap: () =>
+          navigateToScanner(context, isAlreadyOnScanner: isScannerActive),
     );
   }
 }

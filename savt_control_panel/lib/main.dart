@@ -844,32 +844,32 @@ class _ControlPanelAppState extends State<ControlPanelApp> {
                 return _buildRoute(const FavoritesScreen());
               case '/knowledge':
                 return _buildRoute(
-                    const MainNavigationContainer(initialTab: 1));
+                    MainNavigationContainer(key: MainNavigationContainer.globalKey, initialTab: 1));
               case '/about-us':
                 return _buildRoute(
-                    const MainNavigationContainer(initialTab: 1));
+                    MainNavigationContainer(key: MainNavigationContainer.globalKey, initialTab: 1));
               case '/chats':
                 if (_isGuestModeSafe) {
                   return _buildRoute(
-                      const MainNavigationContainer(initialTab: 0));
+                      MainNavigationContainer(key: MainNavigationContainer.globalKey, initialTab: 0));
                 }
                 return _buildRoute(
-                    const MainNavigationContainer(initialTab: 2));
+                    MainNavigationContainer(key: MainNavigationContainer.globalKey, initialTab: 2));
               case '/profile':
                 if (_isGuestModeSafe) {
                   return _buildRoute(
-                      const MainNavigationContainer(initialTab: 0));
+                      MainNavigationContainer(key: MainNavigationContainer.globalKey, initialTab: 0));
                 }
                 return _buildRoute(
-                    const MainNavigationContainer(initialTab: 3));
+                    MainNavigationContainer(key: MainNavigationContainer.globalKey, initialTab: 3));
               case '/shu-list':
               case '/home':
                 if (_isGuestModeSafe) {
                   return _buildRoute(
-                      const MainNavigationContainer(initialTab: 0));
+                      MainNavigationContainer(key: MainNavigationContainer.globalKey, initialTab: 0));
                 }
                 return _buildRoute(
-                    const MainNavigationContainer(initialTab: 0));
+                    MainNavigationContainer(key: MainNavigationContainer.globalKey, initialTab: 0));
               case '/notes':
                 if (_isGuestModeSafe) {
                   return _buildRoute(
@@ -962,10 +962,10 @@ class _ControlPanelAppState extends State<ControlPanelApp> {
                 }
                 if (_isGuestModeSafe) {
                   return _buildRoute(
-                      const MainNavigationContainer(initialTab: 0));
+                      MainNavigationContainer(key: MainNavigationContainer.globalKey, initialTab: 0));
                 }
                 return _buildRoute(
-                    const MainNavigationContainer(initialTab: 1));
+                    MainNavigationContainer(key: MainNavigationContainer.globalKey, initialTab: 1));
             }
           },
           theme: _buildLightTheme(),

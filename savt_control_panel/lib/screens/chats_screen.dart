@@ -381,6 +381,8 @@ class ChatsScreenState extends State<ChatsScreen> with SingleTickerProviderState
     OfflineService().updateUnreadChatCount(unreadTotal);
 
     return GradientScaffold(
+      showBottomNavBar: !widget.isTab,
+      currentNavIndex: 2,
       appBarTitle: _isSelectionMode
           ? 'Выбрано: ${_selectedChatIds.length}'
           : 'Чаты',

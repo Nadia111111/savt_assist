@@ -675,7 +675,7 @@ class _ChatScreenState extends State<ChatScreen> {
         try {
           final chats = await chatService.getChats();
           final total = chats.fold<int>(0, (sum, c) => sum + ((c['unread_count'] as num?)?.toInt() ?? 0));
-          print('🔵 [ChatScreen] opened chat $_realChatId, total unread=$total');
+          debugPrint('🔵 [ChatScreen] opened chat $_realChatId, total unread=$total');
           OfflineService().updateUnreadChatCount(total);
         } catch (e) {
           debugPrint('Failed to update chat unread count: $e');
@@ -2305,7 +2305,7 @@ Future<void> _deleteSelectedMessages() async {
     }
     final msgId = int.tryParse(msg.id);
     final chatIdToUse = _realChatId > 0 ? _realChatId : (int.tryParse(widget.chatId) ?? 0);
-    print('🔵 [ChatScreen] _deleteSingleMessage: msg.id="${msg.id}" (parsed=$msgId), chatIdToUse=$chatIdToUse');
+    debugPrint('🔵 [ChatScreen] _deleteSingleMessage: msg.id="${msg.id}" (parsed=$msgId), chatIdToUse=$chatIdToUse');
     
     _deletedMessageIds.add(msg.id);
 
@@ -2330,7 +2330,7 @@ Future<void> _deleteSelectedMessages() async {
     if (msgId != null && chatIdToUse > 0) {
       try {
         await chatService.deleteMessage(chatIdToUse, msgId);
-        print('🟢 [ChatScreen] Message $msgId deleted successfully');
+        debugPrint('🟢 [ChatScreen] Message $msgId deleted successfully');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -2340,7 +2340,7 @@ Future<void> _deleteSelectedMessages() async {
           );
         }
       } catch (e) {
-        print('🔴 [ChatScreen] Error deleting single message: $e');
+        debugPrint('🔴 [ChatScreen] Error deleting single message: $e');
         _deletedMessageIds.remove(msg.id);
         if (mounted) {
           setState(() {
@@ -2354,7 +2354,7 @@ Future<void> _deleteSelectedMessages() async {
         }
       }
     } else {
-      print('⚠️ [ChatScreen] msgId is null or chatIdToUse <= 0, skipping API delete');
+      debugPrint('⚠️ [ChatScreen] msgId is null or chatIdToUse <= 0, skipping API delete');
     }
   }
 
@@ -2487,12 +2487,15 @@ Widget _buildAppBarHeader() {
     if (_isLoading && _messages.isEmpty) {
       return GradientScaffold(
         appBarCustomHeader: _buildAppBarHeader(),
+        currentNavIndex: 2,
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     return GradientScaffold(
       appBarCustomHeader: _buildAppBarHeader(),
+      showBottomNavBar: !_isSelectionMode,
+      currentNavIndex: 2,
       body: ResponsiveContainer(
         maxWidth: 600,
         child: LayoutBuilder(
@@ -2530,6 +2533,7 @@ Widget _buildAppBarHeader() {
                     _buildServiceRequestBanner(theme),
                     Expanded(
                       child: ListView.builder(
+                        // ignore: deprecated_member_use
                         cacheExtent: 250, reverse: true,
                         controller: _scrollController,
                         padding: EdgeInsets.all(horizontalPadding),

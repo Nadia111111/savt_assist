@@ -58,6 +58,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     return GradientScaffold(
+      showBottomNavBar: false,
       useTransparentBody: true,
       body: ResponsiveContainer(
         maxWidth: 600,
