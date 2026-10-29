@@ -172,6 +172,50 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
     }
   }
 
+  Widget _buildImageContent(BuildContext context) {
+    if (_editedBytes != null) {
+      return Image.memory(_editedBytes!, fit: BoxFit.contain);
+    }
+
+    if (!kIsWeb && widget.localPath != null && File(widget.localPath!).existsSync()) {
+      return Image.file(File(widget.localPath!), fit: BoxFit.contain);
+    }
+
+    if (widget.imageUrl != null) {
+      final cachedBytes = AuthImage.getCachedBytes(widget.imageUrl!);
+      if (cachedBytes != null) {
+        return Image.memory(cachedBytes, fit: BoxFit.contain);
+      }
+
+      final screenSize = MediaQuery.of(context).size;
+      return FutureBuilder<Uint8List?>(
+        future: _getImageBytes(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: SizedBox(
+                width: 32,
+                height: 32,
+                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+              ),
+            );
+          }
+          if (snapshot.hasData && snapshot.data != null) {
+            return Image.memory(snapshot.data!, fit: BoxFit.contain);
+          }
+          return AuthImage(
+            url: widget.imageUrl!,
+            fit: BoxFit.contain,
+            width: screenSize.width,
+            height: screenSize.height,
+          );
+        },
+      );
+    }
+
+    return const Icon(Icons.broken_image, color: Colors.white24, size: 100);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -258,26 +302,9 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
                           },
                         );
                       },
-                      child: _editedBytes != null
-                          ? Image.memory(_editedBytes!)
-                          : (widget.localPath != null
-                              ? Image.file(File(widget.localPath!))
-                              : (widget.imageUrl != null
-                                  ? AuthImage(
-                                      url: widget.imageUrl!,
-                                      fit: BoxFit.contain)
-                                  : const Icon(Icons.broken_image,
-                                      color: Colors.white24, size: 100))),
+                      child: _buildImageContent(context),
                     )
-                  : (_editedBytes != null
-                      ? Image.memory(_editedBytes!)
-                      : (widget.localPath != null
-                          ? Image.file(File(widget.localPath!))
-                          : (widget.imageUrl != null
-                              ? AuthImage(
-                                  url: widget.imageUrl!, fit: BoxFit.contain)
-                              : const Icon(Icons.broken_image,
-                                  color: Colors.white24, size: 100)))),
+                  : _buildImageContent(context),
             ),
           ),
           if (_editedBytes != null && widget.onSendEdited != null)
@@ -295,6 +322,10 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
                         borderRadius: BorderRadius.circular(16)),
                   ),
                   onPressed: () async {
+                    if (kIsWeb) {
+                      if (context.mounted) Navigator.pop(context);
+                      return;
+                    }
                     final tempDir = await getTemporaryDirectory();
                     final tempFile = File(
                         '${tempDir.path}/edited_chat_${DateTime.now().millisecondsSinceEpoch}.png');

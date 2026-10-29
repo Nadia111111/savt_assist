@@ -341,8 +341,7 @@ class ChatsScreenState extends State<ChatsScreen> with SingleTickerProviderState
         final name = (chat['cabinet_name'] ?? chat['project_name'] ?? chatType)
             .toString()
             .toLowerCase();
-        final lastMsg =
-            (chat['last_message_text'] ?? '').toString().toLowerCase();
+        final lastMsg = _getLastMessagePreview(chat).toLowerCase();
         return name.contains(query) || lastMsg.contains(query);
       }).toList();
     }
@@ -596,6 +595,27 @@ class ChatsScreenState extends State<ChatsScreen> with SingleTickerProviderState
     );
   }
 
+  String _getLastMessagePreview(Map<String, dynamic> chat) {
+    final text = chat['last_message_text']?.toString().trim();
+    if (text != null && text.isNotEmpty) {
+      return text;
+    }
+    if (chat['last_message_at'] != null) {
+      final type = (chat['last_message_type'] ?? '').toString().toLowerCase();
+      if (type.contains('voice') || type.contains('audio')) {
+        return '🎤 Голосовое сообщение';
+      }
+      if (type.contains('video')) {
+        return '🎥 Видеозапись';
+      }
+      if (type.contains('file') || type.contains('doc')) {
+        return '📎 Файл';
+      }
+      return '📷 Фотография';
+    }
+    return 'Нет сообщений';
+  }
+
   Widget _buildChatCard(Map<String, dynamic> chat, int index) {
     final theme = Theme.of(context);
     final int? chatId = chat['id'] is num
@@ -606,7 +626,7 @@ class ChatsScreenState extends State<ChatsScreen> with SingleTickerProviderState
     final bool hasUnread = unreadCount > 0;
     final chatType = chat['chat_type'] as String? ?? '';
     final name = chat['cabinet_name'] ?? _getChatTypeName(chatType, chat);
-    final lastMessage = chat['last_message_text'] ?? 'Нет сообщений';
+    final lastMessage = _getLastMessagePreview(chat);
     final lastTime = _formatTime(chat['last_message_at']);
     final bool isPinned = chat['is_pinned'] == true ||
         chat['isPinned'] == true ||
@@ -638,8 +658,11 @@ class ChatsScreenState extends State<ChatsScreen> with SingleTickerProviderState
           });
           return;
         }
+        setState(() {
+          chat['unread_count'] = 0;
+        });
         await Navigator.pushNamed(context, '/chat/${chat['id']}');
-        loadChats(); // Обновляем список чатов после возврата
+        await loadChats(); // Обновляем список чатов после возврата
       },
       child: Row(
         children: [

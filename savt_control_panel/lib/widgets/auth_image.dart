@@ -245,8 +245,8 @@ class _AuthImageState extends State<AuthImage> {
           final hasBoundedWidth = constraints.hasBoundedWidth && constraints.maxWidth != double.infinity;
           final hasBoundedHeight = constraints.hasBoundedHeight && constraints.maxHeight != double.infinity;
 
-          final effectiveWidth = widget.width ?? (hasBoundedWidth ? constraints.maxWidth : (widget.fit == BoxFit.contain ? double.infinity : 240.0));
-          final effectiveHeight = widget.height ?? (hasBoundedHeight ? constraints.maxHeight : (widget.fit == BoxFit.contain ? double.infinity : 200.0));
+          final effectiveWidth = widget.width ?? (hasBoundedWidth ? constraints.maxWidth : (widget.fit == BoxFit.contain ? 800.0 : 240.0));
+          final effectiveHeight = widget.height ?? (hasBoundedHeight ? constraints.maxHeight : (widget.fit == BoxFit.contain ? 600.0 : 200.0));
 
           return SizedBox(
             width: effectiveWidth,

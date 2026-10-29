@@ -10,6 +10,7 @@ import 'offline_service.dart'; // Для кэширования через Offli
 class ChatService {
   final ApiClient _apiClient;
   final OfflineService _offlineService = OfflineService();
+  static final Map<int, DateTime> _recentlyMarkedReadChatIds = {};
 
   ChatService(this._apiClient);
 
@@ -117,9 +118,21 @@ class ChatService {
             .toList();
       }
 
+      // Проверяем недавно прочитанные чаты, чтобы предотвратить задержку репликации сервера
+      final now = DateTime.now();
+      _recentlyMarkedReadChatIds.removeWhere((_, time) => now.difference(time).inMinutes > 2);
+      for (var c in result) {
+        final id = c['id'] is num ? (c['id'] as num).toInt() : int.tryParse(c['id']?.toString() ?? '');
+        if (id != null && _recentlyMarkedReadChatIds.containsKey(id)) {
+          c['unread_count'] = 0;
+        }
+      }
+
       print('🔵 [ChatService] getChats result count=${result.length}');
       // Кэшируем список чатов
       await _cacheChats(result);
+      final totalUnread = result.fold<int>(0, (sum, c) => sum + ((c['unread_count'] as num?)?.toInt() ?? 0));
+      _offlineService.updateUnreadChatCount(totalUnread);
       return result;
     } on DioException catch (e) {
       // Возвращаем кэш при ошибке сервера или сети
@@ -394,6 +407,9 @@ class ChatService {
   }
 
   Future<void> markAsRead(int chatId) async {
+    _recentlyMarkedReadChatIds[chatId] = DateTime.now();
+    await _updateLocalChatUnreadCount(chatId, 0);
+
     try {
       print('🔵 [ChatService] markAsRead chatId=$chatId');
       await _apiClient.dio.post('/chats/$chatId/read');
@@ -401,6 +417,53 @@ class ChatService {
     } on DioException catch (e) {
       print('🔴 [ChatService] markAsRead error chatId=$chatId: $e');
       throw _handleError(e);
+    }
+  }
+
+  Future<void> _updateLocalChatUnreadCount(int chatId, int unreadCount) async {
+    try {
+      final cached = await _offlineService.getCache('user_chats');
+      if (cached is List) {
+        final list = cached.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        bool found = false;
+        int totalUnread = 0;
+        for (var c in list) {
+          final id = c['id'] is num ? (c['id'] as num).toInt() : int.tryParse(c['id']?.toString() ?? '');
+          if (id == chatId) {
+            c['unread_count'] = unreadCount;
+            found = true;
+          }
+          totalUnread += (c['unread_count'] as num?)?.toInt() ?? 0;
+        }
+        if (found) {
+          await _offlineService.saveCache('user_chats', list);
+          _offlineService.updateUnreadChatCount(totalUnread);
+        }
+      }
+
+      if (!kIsWeb) {
+        final db = await DbService.instance.database;
+        final rows = await db.query(
+          'messages',
+          where: 'message_id = ?',
+          whereArgs: ['chat_meta_$chatId'],
+        );
+        if (rows.isNotEmpty) {
+          final dataStr = rows.first['data'] as String?;
+          if (dataStr != null) {
+            final parsed = Map<String, dynamic>.from(jsonDecode(dataStr));
+            parsed['unread_count'] = unreadCount;
+            await db.update(
+              'messages',
+              {'data': jsonEncode(parsed)},
+              where: 'message_id = ?',
+              whereArgs: ['chat_meta_$chatId'],
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error updating local chat unread count: $e');
     }
   }
 

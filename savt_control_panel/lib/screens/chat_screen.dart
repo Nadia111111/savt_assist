@@ -36,6 +36,7 @@ import 'shared_media_screen.dart';
 import '../models/chat_message.dart';
 import '../main.dart';
 import '../utils/web_paste_listener.dart';
+import '../utils/mobile_clipboard_helper.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -548,6 +549,28 @@ class _ChatScreenState extends State<ChatScreen> {
         debugPrint('Failed to load reactions: $e');
       }
 
+      int unreadCountForScroll = 0;
+      if (_realChatId > 0) {
+        try {
+          final cachedChats = await OfflineService().getCache('user_chats');
+          if (cachedChats is List) {
+            for (var c in cachedChats) {
+              final id = c['id'] is num ? (c['id'] as num).toInt() : int.tryParse(c['id']?.toString() ?? '');
+              if (id == _realChatId) {
+                unreadCountForScroll = (c['unread_count'] as num?)?.toInt() ?? 0;
+                break;
+              }
+            }
+          }
+        } catch (_) {}
+
+        try {
+          await chatService.markAsRead(_realChatId);
+        } catch (e) {
+          debugPrint('Failed to markAsRead initially: $e');
+        }
+      }
+
       List<dynamic> chats = [];
       try {
         chats = await chatService.getChats();
@@ -669,23 +692,14 @@ class _ChatScreenState extends State<ChatScreen> {
       }
 
       if (_realChatId > 0) {
-        chatService.markAsRead(_realChatId).catchError((_) {});
         _startMessagePolling();
-
-        try {
-          final chats = await chatService.getChats();
-          final total = chats.fold<int>(0, (sum, c) => sum + ((c['unread_count'] as num?)?.toInt() ?? 0));
-          debugPrint('🔵 [ChatScreen] opened chat $_realChatId, total unread=$total');
-          OfflineService().updateUnreadChatCount(total);
-        } catch (e) {
-          debugPrint('Failed to update chat unread count: $e');
-        }
       }
 
       if (mounted) {
         setState(() => _isLoading = false);
-        if (unreadCount > 0 && unreadCount <= _messages.length) {
-          _scrollToUnread(unreadCount - 1);
+        final countToScroll = unreadCountForScroll > 0 ? unreadCountForScroll : unreadCount;
+        if (countToScroll > 0 && countToScroll <= _messages.length) {
+          _scrollToUnread(countToScroll - 1);
         }
       }
     } catch (e, stackTrace) {
@@ -1748,6 +1762,7 @@ Future<void> _deleteSelectedMessages() async {
       ];
       final replyId = _replyTo != null ? int.tryParse(_replyTo!.id) : null;
       final res = await chatService.sendMessageWithAttachments(_realChatId, '', atts, replyToId: replyId);
+      _updateLastMessageInCache('📷 Фотография');
       setState(() {
         final newMsg = ChatMessage.fromJson(res, _myUserId ?? 0);
         _messages.insert(0, _replyTo != null ? newMsg.copyWith(replyTo: _replyTo) : newMsg);
@@ -1959,6 +1974,7 @@ Future<void> _deleteSelectedMessages() async {
         atts,
         replyToId: replyId,
       );
+      _updateLastMessageInCache(messageText.isNotEmpty ? messageText : '📷 Фотография');
       setState(() {
         final newMsg = ChatMessage.fromJson(res, _myUserId ?? 0);
         _messages.insert(0, _replyTo != null ? newMsg.copyWith(replyTo: _replyTo) : newMsg);
@@ -1970,6 +1986,73 @@ Future<void> _deleteSelectedMessages() async {
     } finally {
       setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _updateLastMessageInCache(String text) async {
+    try {
+      final cached = await OfflineService().getCache('user_chats');
+      if (cached is List) {
+        final list = cached.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        for (var c in list) {
+          final id = c['id'] is num ? (c['id'] as num).toInt() : int.tryParse(c['id']?.toString() ?? '');
+          if (id == _realChatId) {
+            c['last_message_text'] = text;
+            c['last_message_at'] = DateTime.now().toIso8601String();
+            break;
+          }
+        }
+        await OfflineService().saveCache('user_chats', list);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _pasteImageFromClipboard() async {
+    if (_isChatArchived) {
+      _showError('Чат перенесен в архив. Отправка сообщений недоступна.');
+      return;
+    }
+
+    final clipboardImage = await MobileClipboardHelper.getClipboardImage();
+    if (clipboardImage != null) {
+      final bytes = clipboardImage['bytes'] as Uint8List;
+      final fileName = clipboardImage['fileName'] as String;
+      final mimeType = clipboardImage['mimeType'] as String;
+      _handlePastedAttachment(bytes, fileName, mimeType);
+      return;
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('В буфере обмена нет изображения. Скопируйте изображение и повторите попытку.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  void _openFullscreenImage(ChatAttachment att, String heroTag, ChatMessage msg) {
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.transparent,
+        transitionDuration: const Duration(milliseconds: 260),
+        reverseTransitionDuration: const Duration(milliseconds: 220),
+        pageBuilder: (context, animation, secondaryAnimation) => FullscreenImageViewer(
+          imageUrl: att.fileUrl,
+          localPath: kIsWeb ? null : att.localPath,
+          fileName: att.fileName,
+          heroTag: heroTag,
+          onDownloadRequest: (url) => uploadService.downloadFile(url),
+          onSendEdited: (editedPath) => _sendAttachment(editedPath),
+          onDelete: msg.isOwn ? () => _deleteSingleMessage(msg) : null,
+        ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
+    );
   }
 
   Future<void> _sendCurrentLocation() async {
@@ -2080,6 +2163,15 @@ Future<void> _deleteSelectedMessages() async {
                 final picker = ImagePicker();
                 final image = await picker.pickImage(source: ImageSource.camera);
                 if (image != null) _editAndSendAttachment(image.path);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.content_paste_rounded, color: Colors.teal),
+              title: const Text('Вставить из буфера'),
+              subtitle: const Text('Скопированное изображение', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              onTap: () async {
+                Navigator.pop(context);
+                await _pasteImageFromClipboard();
               },
             ),
             ListTile(
@@ -2854,35 +2946,32 @@ Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
                           padding: const EdgeInsets.only(bottom: 8),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: GestureDetector(
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  PageRouteBuilder(
-                                    opaque: false,
-                                    barrierColor: Colors.transparent,
-                                    transitionDuration: const Duration(milliseconds: 260),
-                                    reverseTransitionDuration: const Duration(milliseconds: 220),
-                                    pageBuilder: (context, animation, secondaryAnimation) => FullscreenImageViewer(
-                                      imageUrl: att.fileUrl,
-                                      localPath: att.localPath,
-                                      fileName: att.fileName,
-                                      heroTag: heroTag,
-                                      onDownloadRequest: (url) => uploadService.downloadFile(url),
-                                      onSendEdited: (editedPath) => _sendAttachment(editedPath),
-                                      onDelete: msg.isOwn ? () => _deleteSingleMessage(msg) : null,
+                            child: MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () => _openFullscreenImage(att, heroTag, msg),
+                                child: Stack(
+                                  children: [
+                                    Hero(
+                                      tag: heroTag,
+                                      child: (!kIsWeb && att.localPath != null && File(att.localPath!).existsSync())
+                                          ? Image.file(File(att.localPath!), fit: BoxFit.cover)
+                                          : IgnorePointer(
+                                              ignoring: kIsWeb,
+                                              child: AuthImage(url: att.fileUrl ?? '', fit: BoxFit.cover),
+                                            ),
                                     ),
-                                    transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                                      return FadeTransition(opacity: animation, child: child);
-                                    },
-                                  ),
-                                );
-                              },
-                              child: Hero(
-                                tag: heroTag,
-                                child: (!kIsWeb && att.localPath != null && File(att.localPath!).existsSync())
-                                    ? Image.file(File(att.localPath!), fit: BoxFit.cover)
-                                    : AuthImage(url: att.fileUrl ?? '', fit: BoxFit.cover),
+                                    Positioned.fill(
+                                      child: Material(
+                                        color: Colors.transparent,
+                                        child: InkWell(
+                                          onTap: () => _openFullscreenImage(att, heroTag, msg),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -3498,6 +3587,61 @@ const Spacer(),
                           controller: _messageController,
                           focusNode: _focusNode,
                           onChanged: (val) => setState(() {}),
+                          contentInsertionConfiguration: ContentInsertionConfiguration(
+                            allowedMimeTypes: const <String>[
+                              'image/png',
+                              'image/jpeg',
+                              'image/jpg',
+                              'image/gif',
+                              'image/webp',
+                            ],
+                            onContentInserted: (KeyboardInsertedContent data) async {
+                              if (data.data != null) {
+                                _handlePastedAttachment(
+                                  data.data!,
+                                  'keyboard_image_${DateTime.now().millisecondsSinceEpoch}.png',
+                                  data.mimeType,
+                                );
+                              }
+                            },
+                          ),
+                          contextMenuBuilder: (context, editableTextState) {
+                            final List<ContextMenuButtonItem> buttonItems =
+                                editableTextState.buttonItems;
+                            if (kIsWeb) {
+                              return AdaptiveTextSelectionToolbar.buttonItems(
+                                anchors: editableTextState.contextMenuAnchors,
+                                buttonItems: buttonItems,
+                              );
+                            }
+                            return FutureBuilder<Map<String, dynamic>?>(
+                              future: MobileClipboardHelper.getClipboardImage(),
+                              builder: (context, snapshot) {
+                                final imageInfo = snapshot.data;
+                                final items = List<ContextMenuButtonItem>.from(buttonItems);
+                                if (imageInfo != null) {
+                                  items.insert(
+                                    0,
+                                    ContextMenuButtonItem(
+                                      label: 'Вставить изображение',
+                                      onPressed: () {
+                                        ContextMenuController.removeAny();
+                                        _handlePastedAttachment(
+                                          imageInfo['bytes'] as Uint8List,
+                                          imageInfo['fileName'] as String,
+                                          imageInfo['mimeType'] as String,
+                                        );
+                                      },
+                                    ),
+                                  );
+                                }
+                                return AdaptiveTextSelectionToolbar.buttonItems(
+                                  anchors: editableTextState.contextMenuAnchors,
+                                  buttonItems: items,
+                                );
+                              },
+                            );
+                          },
                           decoration: const InputDecoration(
                             hintText: 'Введите сообщение...',
                             border: InputBorder.none,

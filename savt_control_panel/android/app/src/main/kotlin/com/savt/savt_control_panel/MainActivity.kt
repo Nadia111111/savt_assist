@@ -1,6 +1,8 @@
 package com.savt.savt_control_panel
 
+import android.content.ClipboardManager
 import android.content.ContentValues
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Environment
@@ -22,25 +24,75 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
-            if (call.method == "saveToDownloads") {
-                val fileName = call.argument<String>("fileName") ?: "file_${System.currentTimeMillis()}"
-                val bytes = call.argument<ByteArray>("bytes")
-                val mimeType = call.argument<String>("mimeType") ?: "application/octet-stream"
+            when (call.method) {
+                "saveToDownloads" -> {
+                    val fileName = call.argument<String>("fileName") ?: "file_${System.currentTimeMillis()}"
+                    val bytes = call.argument<ByteArray>("bytes")
+                    val mimeType = call.argument<String>("mimeType") ?: "application/octet-stream"
 
-                if (bytes == null) {
-                    result.error("INVALID_ARGS", "Bytes cannot be null", null)
-                    return@setMethodCallHandler
-                }
+                    if (bytes == null) {
+                        result.error("INVALID_ARGS", "Bytes cannot be null", null)
+                        return@setMethodCallHandler
+                    }
 
-                try {
-                    val savedLocation = saveFileToPublicDownloads(fileName, bytes, mimeType)
-                    result.success(savedLocation)
-                } catch (e: Exception) {
-                    result.error("SAVE_FAILED", e.localizedMessage ?: "Unknown error saving to Downloads", null)
+                    try {
+                        val savedLocation = saveFileToPublicDownloads(fileName, bytes, mimeType)
+                        result.success(savedLocation)
+                    } catch (e: Exception) {
+                        result.error("SAVE_FAILED", e.localizedMessage ?: "Unknown error saving to Downloads", null)
+                    }
                 }
-            } else {
-                result.notImplemented()
+                "getClipboardImage" -> {
+                    try {
+                        val clipboardData = getClipboardImage()
+                        result.success(clipboardData)
+                    } catch (e: Exception) {
+                        result.error("CLIPBOARD_FAILED", e.localizedMessage ?: "Failed to read clipboard", null)
+                    }
+                }
+                else -> {
+                    result.notImplemented()
+                }
             }
+        }
+    }
+
+    private fun getClipboardImage(): Map<String, Any?>? {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return null
+        if (!clipboard.hasPrimaryClip()) return null
+        val clip = clipboard.primaryClip ?: return null
+        if (clip.itemCount == 0) return null
+
+        val item = clip.getItemAt(0)
+        val uri = item.uri ?: return null
+        val resolver = applicationContext.contentResolver
+        val mimeType = resolver.getType(uri) ?: (if (clip.description.hasMimeType("image/*")) clip.description.getMimeType(0) else "image/png")
+
+        if (!mimeType.startsWith("image/")) {
+            return null
+        }
+
+        return try {
+            resolver.openInputStream(uri)?.use { inputStream ->
+                val bytes = inputStream.readBytes()
+                var fileName = "clipboard_image_${System.currentTimeMillis()}"
+                val ext = when {
+                    mimeType.contains("jpeg") || mimeType.contains("jpg") -> ".jpg"
+                    mimeType.contains("webp") -> ".webp"
+                    mimeType.contains("gif") -> ".gif"
+                    else -> ".png"
+                }
+                if (!fileName.endsWith(ext)) {
+                    fileName += ext
+                }
+                mapOf(
+                    "bytes" to bytes,
+                    "mimeType" to mimeType,
+                    "fileName" to fileName
+                )
+            }
+        } catch (e: Exception) {
+            null
         }
     }
 
