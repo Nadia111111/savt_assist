@@ -333,6 +333,7 @@ class AppNavState extends ChangeNotifier {
   bool get isVisible => _isVisible && !_isRouteExcluded;
   int get currentIndex => _currentIndex;
   bool get isScannerActive => _isScannerActive;
+  bool get isRouteExcluded => _isRouteExcluded;
 
   final List<AppNavConfig> _configStack = [];
   bool _isNotifyingScheduled = false;
@@ -444,7 +445,7 @@ class AppNavState extends ChangeNotifier {
         _currentIndex = top.currentIndex!;
       }
     } else {
-      _isVisible = true;
+      _isVisible = !_isRouteExcluded;
       _isScannerActive = false;
     }
     _notifySafely();
@@ -478,14 +479,26 @@ class AppRouteObserver extends NavigatorObserver {
     '/password-reset-request',
   };
 
+  static bool isExcludedRoute(String? name) {
+    if (name == null || name.isEmpty) return false;
+    final clean = name.split('?').first.split('#').first;
+    return clean == '/' ||
+        clean.startsWith('/onboarding') ||
+        clean.startsWith('/auth') ||
+        clean.startsWith('/forgot-password') ||
+        clean.startsWith('/register-request') ||
+        clean.startsWith('/password-reset-request') ||
+        _excludedRoutes.contains(clean);
+  }
+
   void _handleRoute(Route<dynamic>? route) {
     if (route == null) return;
     final name = route.settings.name;
+    if (isExcludedRoute(name)) {
+      AppNavState.instance.setRouteExcluded(true);
+      return;
+    }
     if (name != null) {
-      if (name == '/' || name.startsWith('/onboarding') || _excludedRoutes.contains(name)) {
-        AppNavState.instance.setRouteExcluded(true);
-        return;
-      }
       AppNavState.instance.setRouteExcluded(false);
 
       if (name == '/qr-scanner' ||
@@ -555,6 +568,9 @@ class PersistentBottomNavBar extends StatelessWidget {
       animation: AppNavState.instance,
       builder: (context, _) {
         final state = AppNavState.instance;
+        if (!state.isVisible) {
+          return const SizedBox.shrink();
+        }
         final isGuest = tokenStorage.isGuestMode;
         final effectiveIndex =
             state.isScannerActive ? -1 : state.currentIndex;

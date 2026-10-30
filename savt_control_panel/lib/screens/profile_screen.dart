@@ -475,9 +475,9 @@ class ProfileScreenState extends State<ProfileScreen> {
       await authService.logout();
       if (mounted) {
         Navigator.pop(context);
-        Navigator.pushAndRemoveUntil(
+        Navigator.pushNamedAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (_) => const AuthPage()),
+          '/auth',
           (route) => false,
         );
       }
@@ -582,9 +582,9 @@ class ProfileScreenState extends State<ProfileScreen> {
 
                   if (mounted) {
                     Navigator.pop(this.context); // Close progress dialog
-                    Navigator.pushAndRemoveUntil(
+                    Navigator.pushNamedAndRemoveUntil(
                       this.context,
-                      MaterialPageRoute(builder: (_) => const AuthPage()),
+                      '/auth',
                       (route) => false,
                     );
                     ScaffoldMessenger.of(this.context).showSnackBar(

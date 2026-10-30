@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../theme/app_spacing.dart';
 import '../widgets/animated_background.dart';
+import '../widgets/bottom_nav_bar.dart';
 import '../main.dart';
 
 class PasswordResetRequestScreen extends StatefulWidget {
@@ -119,6 +120,16 @@ class _PasswordResetRequestScreenState extends State<PasswordResetRequestScreen>
   }
 
   @override
+  void initState() {
+    super.initState();
+    AppNavState.instance.setRouteExcluded(true);
+    AppNavState.instance.pushConfig(
+      id: this,
+      showBottomBar: false,
+    );
+  }
+
+  @override
   void dispose() {
     _phoneController.dispose();
     _newPasswordController.dispose();
@@ -128,6 +139,7 @@ class _PasswordResetRequestScreenState extends State<PasswordResetRequestScreen>
     _newPasswordFocusNode.dispose();
     _confirmPasswordFocusNode.dispose();
     _userCommentFocusNode.dispose();
+    AppNavState.instance.removeConfig(this);
     super.dispose();
   }
 

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../theme/app_spacing.dart';
 import '../widgets/animated_background.dart';
+import '../widgets/bottom_nav_bar.dart';
 import '../main.dart';
 
 class RegisterRequestScreen extends StatefulWidget {
@@ -157,6 +158,16 @@ class _RegisterRequestScreenState extends State<RegisterRequestScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    AppNavState.instance.setRouteExcluded(true);
+    AppNavState.instance.pushConfig(
+      id: this,
+      showBottomBar: false,
+    );
+  }
+
+  @override
   void dispose() {
     _phoneController.dispose();
     _passwordController.dispose();
@@ -172,6 +183,7 @@ class _RegisterRequestScreenState extends State<RegisterRequestScreen> {
     _orgNameFocusNode.dispose();
     _contactPhoneFocusNode.dispose();
     _userCommentFocusNode.dispose();
+    AppNavState.instance.removeConfig(this);
     super.dispose();
   }
 

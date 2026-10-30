@@ -5,6 +5,7 @@ import '../theme/app_spacing.dart';
 import '../widgets/animated_background.dart';
 import '../main.dart';
 import '../screens/password_reset_request_screen.dart';
+import '../widgets/bottom_nav_bar.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -173,6 +174,16 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    AppNavState.instance.setRouteExcluded(true);
+    AppNavState.instance.pushConfig(
+      id: this,
+      showBottomBar: false,
+    );
+  }
+
+  @override
   void dispose() {
     _phoneController.dispose();
     _smsCodeController.dispose();
@@ -182,6 +193,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     _smsCodeFocusNode.dispose();
     _newPasswordFocusNode.dispose();
     _confirmPasswordFocusNode.dispose();
+    AppNavState.instance.removeConfig(this);
     super.dispose();
   }
 
@@ -287,11 +299,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                                 .colorScheme.onSurfaceVariant)),
                                 const SizedBox(height: 16),
                                 TextButton.icon(
-                                  onPressed: () => Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                          builder: (_) =>
-                                              const PasswordResetRequestScreen())),
+                                  onPressed: () => Navigator.pushNamed(
+                                      context, '/password-reset-request'),
                                   icon: Icon(Icons.lock_reset,
                                       color: theme.colorScheme.primary,
                                       size: 18),
@@ -321,11 +330,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                                 .colorScheme.onSurfaceVariant)),
                                 const SizedBox(height: 8),
                                 TextButton.icon(
-                                  onPressed: () => Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                          builder: (_) =>
-                                              const PasswordResetRequestScreen())),
+                                  onPressed: () => Navigator.pushNamed(
+                                      context, '/password-reset-request'),
                                   icon: Icon(Icons.lock_reset,
                                       color: theme.colorScheme.primary,
                                       size: 18),

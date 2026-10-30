@@ -63,7 +63,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   void dispose() {
     AppNavState.instance.removeConfig(this);
-    AppNavState.instance.setRouteExcluded(false);
     _pageController.dispose();
     super.dispose();
   }

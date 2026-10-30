@@ -13,6 +13,7 @@ import '../main.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/auth_service.dart';
 import '../services/preferences_service.dart';
+import '../widgets/bottom_nav_bar.dart';
 
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key});
@@ -125,6 +126,11 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    AppNavState.instance.setRouteExcluded(true);
+    AppNavState.instance.pushConfig(
+      id: this,
+      showBottomBar: false,
+    );
     _restoreRegistrationDraftIfAny();
     _fullNameController.addListener(_onFormFieldChanged);
     _orgNameController.addListener(_onFormFieldChanged);
@@ -966,6 +972,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
     _loginPhoneFocusNode.dispose();
     _loginPasswordFocusNode.dispose();
     _contactPhoneFocusNode.dispose();
+    AppNavState.instance.removeConfig(this);
     super.dispose();
   }
 
@@ -1219,10 +1226,8 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-                onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const ForgotPasswordScreen())),
+                onPressed: () =>
+                    Navigator.pushNamed(context, '/forgot-password'),
                 child: Text('Забыли пароль? Восстановите его через Telegram',
                     style: TextStyle(
                         fontSize: 12,
@@ -1233,10 +1238,8 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-                onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const PasswordResetRequestScreen())),
+                onPressed: () =>
+                    Navigator.pushNamed(context, '/password-reset-request'),
                 child: Text('Нет Telegram? Оставьте заявку на сброс пароля',
                     style: TextStyle(
                         fontSize: 12,
