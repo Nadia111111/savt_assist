@@ -18,6 +18,8 @@ import '../services/offline_service.dart';
 import '../services/push_service.dart';
 import '../services/notification_service.dart' as notif;
 import '../services/user_events_service.dart';
+import '../widgets/savt_animated_logo.dart';
+import '../widgets/animated_background.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -32,10 +34,40 @@ class _SplashScreenState extends State<SplashScreen> {
   String _errorMessage = '';
   bool _isInitialized = false;
 
+  bool _isFirstLaunch = false;
+  bool _readyToNavigate = false;
+  String? _targetRoute;
+
   @override
   void initState() {
     super.initState();
     _initializeApp();
+  }
+
+  void _onLogoCycleCompleted() {
+    // Срабатывает в конце каждого цикла, когда буквы AVT уже полностью нырнули обратно в букву S.
+    // Если проверка авторизации/инициализация готова, выполняем переход в приложение!
+    if (_readyToNavigate && _targetRoute != null) {
+      _navigateToTarget();
+    }
+  }
+
+  void _skipIntro() {
+    if (_targetRoute != null) {
+      _navigateToTarget();
+    } else {
+      _readyToNavigate = true;
+    }
+  }
+
+  void _navigateToTarget() {
+    if (!mounted || _targetRoute == null) return;
+
+    Navigator.pushReplacementNamed(context, _targetRoute!);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ControlPanelApp.onAppInitialized();
+    });
   }
 
   Future<void> _initializeApp() async {
@@ -48,9 +80,18 @@ class _SplashScreenState extends State<SplashScreen> {
     });
 
     try {
-      // 1. Initialize SharedPreferences
+      // 1. Initialize SharedPreferences & determine if it's first launch (before onboarding)
       await PreferencesService.init();
       AppTheme.loadTheme();
+
+      final bool isOnboardingShown =
+          PreferencesService.prefs.getBool('is_onboarding_shown') ?? false;
+
+      if (mounted) {
+        setState(() {
+          _isFirstLaunch = !isOnboardingShown;
+        });
+      }
 
       setState(() {
         _status = 'Настройка компонентов...';
@@ -132,7 +173,7 @@ class _SplashScreenState extends State<SplashScreen> {
             debugPrint('Ошибка загрузки данных: $e');
           }
 
-          // ⭐ Используем новый метод для получения количества непрочитанных
+          // ⭐ Получаем количество непрочитанных
           try {
             final notifService = notif.NotificationService(apiClient);
             final count = await notifService.getUnreadCount().timeout(
@@ -165,26 +206,26 @@ class _SplashScreenState extends State<SplashScreen> {
         }
       }
 
-      // 4. Check onboarding
-      final bool isOnboardingShown =
-          PreferencesService.prefs.getBool('is_onboarding_shown') ?? false;
-
       if (!mounted) return;
 
-      // 5. Navigate
+      // 4. Set target navigation route
       if (!isOnboardingShown) {
-        Navigator.pushReplacementNamed(context, '/onboarding');
+        _targetRoute = '/onboarding';
       } else if (isGuestMode) {
-        Navigator.pushReplacementNamed(context, '/knowledge');
+        _targetRoute = '/knowledge';
       } else if (isLoggedIn) {
-        Navigator.pushReplacementNamed(context, '/shu-list');
+        _targetRoute = '/shu-list';
       } else {
-        Navigator.pushReplacementNamed(context, '/auth');
+        _targetRoute = '/auth';
       }
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ControlPanelApp.onAppInitialized();
-      });
+      // 5. Помечаем готовность к переходу.
+      // Переход произойдет СТРОГО в момент, когда буквы AVT завершат погружение в S!
+      if (mounted) {
+        setState(() {
+          _readyToNavigate = true;
+        });
+      }
     } catch (e, stackTrace) {
       debugPrint('❌ Ошибка инициализации приложения: $e');
       debugPrintStack(stackTrace: stackTrace);
@@ -203,95 +244,149 @@ class _SplashScreenState extends State<SplashScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFF054582),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.base),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+      body: Stack(
+        children: [
+          // Фирменный фон с плавающими кругами/пузырями (как на страницах авторизации и регистрации)
+          const Positioned.fill(
+            child: AnimatedBackground(
+              gradientColors: [
+                Color(0xFF054582),
+                Color(0xFF0a7ac2),
+                Color(0xFF0d3a5c),
+              ],
+              floatUpwards: true,
+              circleCount: 10,
+            ),
+          ),
+          SafeArea(
+            child: Stack(
             children: [
-              // Logo
-              Image.asset(
-                'assets/images/logo-small.png',
-                height: 90,
-                width: 90,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => Image.network(
-                  'https://savt.by/wp-content/uploads/2025/10/logo-small.png',
-                  height: 90,
-                  width: 90,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => Container(
-                    height: 90,
-                    width: 90,
-                    decoration: const BoxDecoration(
-                      color: Colors.white24,
-                      shape: BoxShape.circle,
+              // Кнопка "Пропустить" при первом запуске (интро перед онбордингом)
+              if (_isFirstLaunch && !_hasError)
+                Positioned(
+                  top: 16,
+                  right: 16,
+                  child: TextButton(
+                    onPressed: _skipIntro,
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.white70,
+                      backgroundColor: Colors.white.withValues(alpha: 0.12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                     ),
-                    child:
-                        const Icon(Icons.business, size: 48, color: Colors.white),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Пропустить',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        SizedBox(width: 4),
+                        Icon(Icons.arrow_forward_ios, size: 12),
+                      ],
+                    ),
+                  ),
+                ),
+
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.base,
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Анимированный логотип SAVT с адаптивным центрированием
+                      SavtAnimatedLogo(
+                        height: 68,
+                        loop: true,
+                        duration: const Duration(milliseconds: 3200),
+                        onCycleCompleted: _onLogoCycleCompleted,
+                      ),
+
+                      if (!_hasError) ...[
+                        // Текст статуса отображается при проверке авторизации
+                        if (!_isFirstLaunch) ...[
+                          const SizedBox(height: 28),
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 250),
+                            child: Text(
+                              _status,
+                              key: ValueKey<String>(_status),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w500,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ] else ...[
+                        const SizedBox(height: 32),
+                        const Icon(
+                          Icons.error_outline,
+                          color: Colors.redAccent,
+                          size: 54,
+                        ),
+                        gapH16,
+                        const Text(
+                          'Не удалось запустить приложение',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        gapH8,
+                        Text(
+                          _errorMessage,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.red.shade100,
+                            fontSize: 14,
+                          ),
+                        ),
+                        gapH24,
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: theme.primaryColor,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _hasError = false;
+                              _errorMessage = '';
+                              _isInitialized = false;
+                              _readyToNavigate = false;
+                              _targetRoute = null;
+                            });
+                            _initializeApp();
+                          },
+                          child: const Text('Повторить'),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),
-              gapH32,
-              if (!_hasError) ...[
-                const CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-                gapH24,
-                Text(
-                  _status,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ] else ...[
-                const Icon(Icons.error_outline,
-                    color: Colors.redAccent, size: 60),
-                gapH16,
-                const Text(
-                  'Не удалось запустить приложение',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                gapH8,
-                Text(
-                  _errorMessage,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.red.shade100,
-                    fontSize: 14,
-                  ),
-                ),
-                gapH24,
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: theme.primaryColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _hasError = false;
-                      _errorMessage = '';
-                      _isInitialized = false;
-                    });
-                    _initializeApp();
-                  },
-                  child: const Text('Повторить'),
-                ),
-              ],
             ],
           ),
         ),
-      ),
-    );
-  }
+      ],
+    ),
+  );
+}
 }

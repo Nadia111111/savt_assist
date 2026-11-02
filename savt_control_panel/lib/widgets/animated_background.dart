@@ -21,9 +21,14 @@ class FloatingCircle {
 
 class AnimatedBackground extends StatefulWidget {
   final List<Color> gradientColors;
+  final bool floatUpwards;
+  final int circleCount;
+
   const AnimatedBackground({
     super.key,
     this.gradientColors = const [Color(0xFF054582), Color(0xFF0a7ac2), Color(0xFFe0f2fe)],
+    this.floatUpwards = false,
+    this.circleCount = 8,
   });
 
   @override
@@ -44,16 +49,23 @@ class _AnimatedBackgroundState extends State<AnimatedBackground>
       duration: const Duration(seconds: 20),
     )..repeat();
 
-    // Создаём плавающие круги
-    for (int i = 0; i < 8; i++) {
+    // Создаём плавающие круги (как на странице авторизации/регистрации)
+    for (int i = 0; i < widget.circleCount; i++) {
+      final double sy = widget.floatUpwards
+          ? -0.35 - _random.nextDouble() * 0.45
+          : (_random.nextDouble() - 0.5) * 0.3;
+      final double sx = widget.floatUpwards
+          ? (_random.nextDouble() - 0.5) * 0.25
+          : (_random.nextDouble() - 0.5) * 0.4;
+
       _circles.add(
         FloatingCircle(
           x: _random.nextDouble() * 400,
-          y: _random.nextDouble() * 300,
-          radius: 30 + _random.nextDouble() * 80,
-          speedX: (_random.nextDouble() - 0.5) * 0.4,
-          speedY: (_random.nextDouble() - 0.5) * 0.3,
-          opacity: 0.03 + _random.nextDouble() * 0.06,
+          y: _random.nextDouble() * 600,
+          radius: 30 + _random.nextDouble() * 75,
+          speedX: sx,
+          speedY: sy,
+          opacity: 0.04 + _random.nextDouble() * 0.07,
         ),
       );
     }

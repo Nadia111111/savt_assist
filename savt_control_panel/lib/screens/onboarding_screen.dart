@@ -134,8 +134,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               size: 72,
                             ),
                           ),
-                           const SizedBox(height: AppSpacing.xl),
-                           // Title
+                          const SizedBox(height: AppSpacing.xl),
+                          // Title
                           Text(
                             slide['title'] as String,
                             textAlign: TextAlign.center,
@@ -145,11 +145,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                           const SizedBox(height: AppSpacing.base),
-                           // Subtitle
+                          const SizedBox(height: AppSpacing.base),
+                          // Subtitle (выравнивание строго по центру)
                           Text(
                             slide['subtitle'] as String,
-                            textAlign: TextAlign.start,
+                            textAlign: TextAlign.center,
                             style: const TextStyle(
                               color: Colors.white70,
                               fontSize: 15,
