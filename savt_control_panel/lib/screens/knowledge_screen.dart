@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/rendering.dart';
 import 'package:open_file/open_file.dart';
 import '../services/file_save_helper.dart';
 import '../theme/app_spacing.dart';
@@ -33,8 +32,6 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode(canRequestFocus: false);
 
-  bool _isHeaderVisible = true;
-
   void resetState() {
     if (mounted) {
       _searchController.clear();
@@ -44,7 +41,6 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
       setState(() {
         _isSearchExpanded = false;
         _searchQuery = '';
-        _isHeaderVisible = true;
       });
       _tabController.animateTo(0);
       if (_scrollController.hasClients) {
@@ -91,7 +87,15 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
   void initState() {
     super.initState();
     favoritesService.addListener(_onFavoritesChanged);
-    _tabController = TabController(length: 2, vsync: this);
+    _sortBy = PreferencesService.getKnowledgeSortBy();
+    _sortOrder = PreferencesService.getKnowledgeSortOrder();
+    _selectedTagIds.addAll(PreferencesService.getKnowledgeSelectedTags());
+    final tabIndex = PreferencesService.getKnowledgeTab();
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: (tabIndex >= 0 && tabIndex < 2) ? tabIndex : 0,
+    );
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
         PreferencesService.saveKnowledgeTab(_tabController.index);
@@ -112,22 +116,6 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
     });
     _scrollController.addListener(() {
       if (_scrollController.hasClients) {
-        final direction = _scrollController.position.userScrollDirection;
-        final pixels = _scrollController.position.pixels;
-        if (pixels <= 0 && !_isHeaderVisible) {
-          setState(() {
-            _isHeaderVisible = true;
-          });
-        } else if (direction == ScrollDirection.reverse && _isHeaderVisible && !_isSearchExpanded) {
-          setState(() {
-            _isHeaderVisible = false;
-          });
-        } else if (direction == ScrollDirection.forward && !_isHeaderVisible) {
-          setState(() {
-            _isHeaderVisible = true;
-          });
-        }
-
         if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
           _loadArticles();
         }
@@ -136,47 +124,16 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
 
     _faqScrollController.addListener(() {
       if (_faqScrollController.hasClients) {
-        final direction = _faqScrollController.position.userScrollDirection;
-        final pixels = _faqScrollController.position.pixels;
-        if (pixels <= 0 && !_isHeaderVisible) {
-          setState(() {
-            _isHeaderVisible = true;
-          });
-        } else if (direction == ScrollDirection.reverse && _isHeaderVisible && !_isSearchExpanded) {
-          setState(() {
-            _isHeaderVisible = false;
-          });
-        } else if (direction == ScrollDirection.forward && !_isHeaderVisible) {
-          setState(() {
-            _isHeaderVisible = true;
-          });
-        }
-
         if (_faqScrollController.position.pixels >= _faqScrollController.position.maxScrollExtent - 200) {
           _loadFaq();
         }
       }
     });
 
-    _initPreferences().then((_) {
-      _loadCategories();
-      _loadFaqCategories();
-      _loadArticles(refresh: true);
-      _loadFaq(refresh: true);
-    });
-  }
-
-  Future<void> _initPreferences() async {
-    try {
-      setState(() {
-        _sortBy = PreferencesService.getKnowledgeSortBy();
-        _sortOrder = PreferencesService.getKnowledgeSortOrder();
-        _selectedTagIds.clear();
-        _selectedTagIds.addAll(PreferencesService.getKnowledgeSelectedTags());
-      });
-      final tabIndex = PreferencesService.getKnowledgeTab();
-      _tabController.animateTo(tabIndex);
-    } catch (_) {}
+    _loadCategories();
+    _loadFaqCategories();
+    _loadArticles(refresh: true);
+    _loadFaq(refresh: true);
   }
 
   Future<void> _savePreferences() async {
@@ -384,7 +341,6 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
                   _isSearchExpanded = false;
                   _searchQuery = '';
                   _searchController.clear();
-                  _isHeaderVisible = true;
                 });
                 if (hadQuery) {
                   _loadArticles(refresh: true);
@@ -393,7 +349,6 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
               } else {
                 _searchFocusNode.canRequestFocus = true;
                 setState(() {
-                  _isHeaderVisible = true;
                   _isSearchExpanded = true;
                 });
                 Future.delayed(const Duration(milliseconds: 150), () {
@@ -489,88 +444,76 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
       ),
       body: ResponsiveContainer(
         maxWidth: 600,
-        child: Stack(
+        child: Column(
           children: [
-            Column(
-              children: [
-                AnimatedCrossFade(
-              firstChild: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 320),
-                    curve: Curves.easeInOutCubic,
-                    height: _isSearchExpanded ? 68 : 0,
-                    padding: EdgeInsets.symmetric(
-                      horizontal: _isSearchExpanded ? AppSpacing.base : 0,
-                      vertical: _isSearchExpanded ? 6 : 0,
-                    ),
-                    child: ClipRect(
-                      child: OverflowBox(
-                        minHeight: 0,
-                        maxHeight: 68,
-                        alignment: Alignment.topCenter,
-                        child: AnimatedOpacity(
-                          opacity: _isSearchExpanded ? 1.0 : 0.0,
-                          duration: const Duration(milliseconds: 220),
-                          child: ExcludeFocus(
-                            excluding: !_isSearchExpanded,
-                            child: IgnorePointer(
-                              ignoring: !_isSearchExpanded,
-                              child: _buildSearchField(),
-                            ),
-                          ),
-                        ),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 320),
+              curve: Curves.easeInOutCubic,
+              height: _isSearchExpanded ? 68 : 0,
+              padding: EdgeInsets.symmetric(
+                horizontal: _isSearchExpanded ? AppSpacing.base : 0,
+                vertical: _isSearchExpanded ? 6 : 0,
+              ),
+              child: ClipRect(
+                child: OverflowBox(
+                  minHeight: 0,
+                  maxHeight: 68,
+                  alignment: Alignment.topCenter,
+                  child: AnimatedOpacity(
+                    opacity: _isSearchExpanded ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 220),
+                    child: ExcludeFocus(
+                      excluding: !_isSearchExpanded,
+                      child: IgnorePointer(
+                        ignoring: !_isSearchExpanded,
+                        child: _buildSearchField(),
                       ),
                     ),
                   ),
-                  // TabBar
-                  Container(
-                    margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).brightness == Brightness.dark
-                          ? Theme.of(context).colorScheme.surfaceContainerHighest
-                          : Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Theme.of(context).brightness == Brightness.dark
-                          ? null
-                          : Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.4)),
-                      boxShadow: Theme.of(context).brightness == Brightness.dark
-                          ? null
-                          : [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.03),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                    ),
-                    child: TabBar(
-                      controller: _tabController,
-                      labelColor: Theme.of(context).colorScheme.primary,
-                      unselectedLabelColor:
-                          Theme.of(context).colorScheme.onSurfaceVariant,
-                      indicatorColor: Theme.of(context).colorScheme.primary,
-                      indicatorWeight: 3,
-                      dividerColor: Colors.transparent,
-                      tabs: const [
-                        Tab(text: 'Статьи'),
-                        Tab(text: 'Частые вопросы'),
+                ),
+              ),
+            ),
+            // TabBar
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              decoration: BoxDecoration(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Theme.of(context).colorScheme.surfaceContainerHighest
+                    : Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Theme.of(context).brightness == Brightness.dark
+                    ? null
+                    : Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.4)),
+                boxShadow: Theme.of(context).brightness == Brightness.dark
+                    ? null
+                    : [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.03),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
                       ],
-                    ),
-                  ),
-                   // Category chips (только для статей)
-                   if (_tabController.index == 0 && _categories.isNotEmpty)
-                     _buildCategoryChips(),
-                  // Category chips для FAQ
-                  if (_tabController.index == 1 && _faqCategories.isNotEmpty)
-                    _buildFaqCategoryChips(),
+              ),
+              child: TabBar(
+                controller: _tabController,
+                labelColor: Theme.of(context).colorScheme.primary,
+                unselectedLabelColor:
+                    Theme.of(context).colorScheme.onSurfaceVariant,
+                indicatorColor: Theme.of(context).colorScheme.primary,
+                indicatorWeight: 3,
+                dividerColor: Colors.transparent,
+                tabs: const [
+                  Tab(text: 'Статьи'),
+                  Tab(text: 'Частые вопросы'),
                 ],
               ),
-              secondChild: const SizedBox.shrink(),
-              crossFadeState: _isHeaderVisible ? CrossFadeState.showFirst : CrossFadeState.showSecond,
-              duration: const Duration(milliseconds: 300),
             ),
+            // Category chips (только для статей)
+            if (_tabController.index == 0)
+              _buildCategoryChips(),
+            // Category chips для FAQ
+            if (_tabController.index == 1)
+              _buildFaqCategoryChips(),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _onRefresh,
@@ -586,9 +529,7 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
             ),
           ],
         ),
-        ],
       ),
-    ),
     );
   }
 
@@ -948,7 +889,6 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
 
   Widget _buildFaqCategoryChips() {
     final theme = Theme.of(context);
-    if (_faqCategories.isEmpty) return const SizedBox.shrink();
     final selectedCat = _faqCategories.firstWhere(
       (c) => c['id'] == _selectedFaqCategoryId,
       orElse: () => <String, dynamic>{},
@@ -963,9 +903,24 @@ class KnowledgeScreenState extends State<KnowledgeScreen>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 10),
           decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest,
+            color: theme.brightness == Brightness.dark
+                ? theme.colorScheme.surfaceContainerHighest
+                : Colors.white,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.3)),
+            border: Border.all(
+              color: theme.brightness == Brightness.dark
+                  ? theme.colorScheme.outline.withValues(alpha: 0.3)
+                  : theme.colorScheme.outline.withValues(alpha: 0.4),
+            ),
+            boxShadow: theme.brightness == Brightness.dark
+                ? null
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
           ),
           child: Row(
             children: [

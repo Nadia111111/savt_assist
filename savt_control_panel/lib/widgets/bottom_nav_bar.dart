@@ -123,8 +123,11 @@ class _BottomNavBarState extends State<BottomNavBar> {
         child: InkWell(
           mouseCursor: SystemMouseCursors.click,
           onTap: () => _handleTap(index),
-          splashColor: theme.colorScheme.primary.withValues(alpha: 0.2),
-          highlightColor: theme.colorScheme.primary.withValues(alpha: 0.1),
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          hoverColor: Colors.transparent,
+          focusColor: Colors.transparent,
+          splashFactory: NoSplash.splashFactory,
           borderRadius: BorderRadius.circular(20),
           child: Center(
             child: AnimatedContainer(
@@ -136,16 +139,6 @@ class _BottomNavBarState extends State<BottomNavBar> {
               decoration: BoxDecoration(
                 color: isSelected ? theme.colorScheme.primary : Colors.transparent,
                 borderRadius: BorderRadius.circular(20),
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: theme.colorScheme.primary.withValues(alpha: 0.35),
-                          blurRadius: 16,
-                          offset: const Offset(0, 4),
-                          spreadRadius: -2,
-                        ),
-                      ]
-                    : null,
               ),
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 150),
@@ -181,8 +174,11 @@ class _BottomNavBarState extends State<BottomNavBar> {
         child: InkWell(
           mouseCursor: SystemMouseCursors.click,
           onTap: () => _handleTap(index),
-          splashColor: theme.colorScheme.primary.withValues(alpha: 0.2),
-          highlightColor: theme.colorScheme.primary.withValues(alpha: 0.1),
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          hoverColor: Colors.transparent,
+          focusColor: Colors.transparent,
+          splashFactory: NoSplash.splashFactory,
           borderRadius: BorderRadius.circular(20),
           child: Center(
             child: AnimatedContainer(
@@ -194,16 +190,6 @@ class _BottomNavBarState extends State<BottomNavBar> {
               decoration: BoxDecoration(
                 color: isSelected ? theme.colorScheme.primary : Colors.transparent,
                 borderRadius: BorderRadius.circular(20),
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: theme.colorScheme.primary.withValues(alpha: 0.35),
-                          blurRadius: 16,
-                          offset: const Offset(0, 4),
-                          spreadRadius: -2,
-                        ),
-                      ]
-                    : null,
               ),
               child: Stack(
                 clipBehavior: Clip.none,
@@ -277,6 +263,11 @@ class _BottomNavBarState extends State<BottomNavBar> {
           onTap: () {
             widget.onScannerTap?.call();
           },
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          hoverColor: Colors.transparent,
+          focusColor: Colors.transparent,
+          splashFactory: NoSplash.splashFactory,
           borderRadius: BorderRadius.circular(12),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
@@ -297,14 +288,6 @@ class _BottomNavBarState extends State<BottomNavBar> {
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: theme.colorScheme.primary
-                      .withValues(alpha: isScannerSelected ? 0.6 : 0.35),
-                  blurRadius: isScannerSelected ? 14 : 10,
-                  offset: const Offset(0, 3),
-                ),
-              ],
             ),
             child: const Center(
               child: Icon(
