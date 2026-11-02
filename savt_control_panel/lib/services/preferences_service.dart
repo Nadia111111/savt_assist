@@ -8,8 +8,20 @@ class PreferencesService {
   static final ValueNotifier<int> fabPositionNotifier = ValueNotifier<int>(0);
   static String? lastUpdatedFabKey;
 
+  // Chat Settings Notifiers
+  static final ValueNotifier<double> bubbleRadiusNotifier = ValueNotifier<double>(17.0);
+  static final ValueNotifier<double> fontSizeNotifier = ValueNotifier<double>(15.0);
+  static final ValueNotifier<String> chatListModeNotifier = ValueNotifier<String>('two_line');
+  static final ValueNotifier<String> nameColorNotifier = ValueNotifier<String>('#10B981');
+  static final ValueNotifier<String> chatThemeNotifier = ValueNotifier<String>('purple');
+
   static Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
+    bubbleRadiusNotifier.value = _prefs.getDouble('chat_bubble_radius') ?? 17.0;
+    fontSizeNotifier.value = _prefs.getDouble('chat_font_size') ?? 15.0;
+    chatListModeNotifier.value = _prefs.getString('chat_list_mode') ?? 'two_line';
+    nameColorNotifier.value = _prefs.getString('chat_name_color') ?? '#10B981';
+    chatThemeNotifier.value = _prefs.getString('chat_theme_preset') ?? 'purple';
   }
 
   static SharedPreferences get prefs => _prefs;
@@ -67,5 +79,40 @@ class PreferencesService {
     await _prefs.setDouble('${key}_norm_y', normY);
     lastUpdatedFabKey = key;
     fabPositionNotifier.value++;
+  }
+
+  // Bubble Radius
+  static double getBubbleRadius() => _prefs.getDouble('chat_bubble_radius') ?? 17.0;
+  static Future<void> saveBubbleRadius(double radius) async {
+    await _prefs.setDouble('chat_bubble_radius', radius);
+    bubbleRadiusNotifier.value = radius;
+  }
+
+  // Font Size
+  static double getFontSize() => _prefs.getDouble('chat_font_size') ?? 15.0;
+  static Future<void> saveFontSize(double size) async {
+    await _prefs.setDouble('chat_font_size', size);
+    fontSizeNotifier.value = size;
+  }
+
+  // Chat List Mode ('two_line' | 'three_line')
+  static String getChatListMode() => _prefs.getString('chat_list_mode') ?? 'two_line';
+  static Future<void> saveChatListMode(String mode) async {
+    await _prefs.setString('chat_list_mode', mode);
+    chatListModeNotifier.value = mode;
+  }
+
+  // Chat Name Color
+  static String getNameColor() => _prefs.getString('chat_name_color') ?? '#10B981';
+  static Future<void> saveNameColor(String colorHex) async {
+    await _prefs.setString('chat_name_color', colorHex);
+    nameColorNotifier.value = colorHex;
+  }
+
+  // Chat Theme Preset
+  static String getChatThemePreset() => _prefs.getString('chat_theme_preset') ?? 'purple';
+  static Future<void> saveChatThemePreset(String preset) async {
+    await _prefs.setString('chat_theme_preset', preset);
+    chatThemeNotifier.value = preset;
   }
 }

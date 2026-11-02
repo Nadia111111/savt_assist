@@ -7,6 +7,7 @@ import '../widgets/gradient_scaffold.dart';
 import '../widgets/animated_card.dart';
 import '../widgets/skeletons.dart';
 import '../widgets/responsive_layout.dart';
+import '../services/preferences_service.dart';
 import '../main.dart';
 
 class ChatsScreen extends StatefulWidget {
@@ -60,6 +61,7 @@ class ChatsScreenState extends State<ChatsScreen> with SingleTickerProviderState
   @override
   void initState() {
     super.initState();
+    PreferencesService.chatListModeNotifier.addListener(_onListModeChanged);
     _tabController = TabController(length: 6, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
@@ -361,8 +363,13 @@ class ChatsScreenState extends State<ChatsScreen> with SingleTickerProviderState
     return [...pinned, ...unpinned];
   }
 
+  void _onListModeChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    PreferencesService.chatListModeNotifier.removeListener(_onListModeChanged);
     _searchFocusNode.dispose();
     _tabController.dispose();
     _scrollController.dispose();
@@ -435,6 +442,12 @@ class ChatsScreenState extends State<ChatsScreen> with SingleTickerProviderState
                       FocusScope.of(context).unfocus();
                     }
                   },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.tune_rounded, color: Colors.white),
+                  tooltip: 'Настройки чатов',
+                  onPressed: () =>
+                      Navigator.pushNamed(context, '/chat-settings'),
                 ),
               ],
             ),
@@ -619,6 +632,7 @@ class ChatsScreenState extends State<ChatsScreen> with SingleTickerProviderState
 
   Widget _buildChatCard(Map<String, dynamic> chat, int index) {
     final theme = Theme.of(context);
+    final bool isThreeLine = PreferencesService.getChatListMode() == 'three_line';
     final int? chatId = chat['id'] is num
         ? (chat['id'] as num).toInt()
         : int.tryParse(chat['id']?.toString() ?? '');
@@ -756,12 +770,13 @@ class ChatsScreenState extends State<ChatsScreen> with SingleTickerProviderState
                      lastMessage,
                      style: TextStyle(
                          fontSize: 13,
+                         height: 1.25,
                          color: hasUnread
                              ? theme.colorScheme.onSurface
                              : theme.colorScheme.onSurfaceVariant,
                          fontWeight:
                              hasUnread ? FontWeight.w500 : FontWeight.normal),
-                     maxLines: 1,
+                     maxLines: isThreeLine ? 2 : 1,
                      overflow: TextOverflow.ellipsis,
                    ),
                  ],

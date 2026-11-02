@@ -34,6 +34,8 @@ import 'fullscreen_image_viewer.dart';
 import 'image_editor_screen.dart';
 import 'shared_media_screen.dart';
 import '../models/chat_message.dart';
+import '../models/chat_theme_presets.dart';
+import '../widgets/telegram_doodle_pattern.dart';
 import '../main.dart';
 import '../utils/web_paste_listener.dart';
 import '../utils/mobile_clipboard_helper.dart';
@@ -70,6 +72,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   bool _isLoading = true;
   int? _myUserId;
+  String _myLastName = '';
   String _chatTitle = 'Чат';
   int _realChatId = 0;
   Map<String, dynamic>? _chatDetail;
@@ -510,12 +513,29 @@ class _ChatScreenState extends State<ChatScreen> {
         _realChatId = int.tryParse(widget.chatId) ?? 0;
       }
 
+      void extractMyName(dynamic data) {
+        if (data is! Map) return;
+        final lName = data['last_name']?.toString()?.trim();
+        final fullName = data['full_name']?.toString()?.trim();
+        final fName = data['first_name']?.toString()?.trim();
+        if (lName != null && lName.isNotEmpty) {
+          _myLastName = lName;
+        } else if (fullName != null && fullName.isNotEmpty) {
+          _myLastName = fullName.split(' ').first;
+        } else if (fName != null && fName.isNotEmpty) {
+          _myLastName = fName;
+        } else {
+          _myLastName = data['username']?.toString() ?? '';
+        }
+      }
+
       // Сначала быстро загружаем ID пользователя из локального кэша для мгновенного восстановления реакций
       try {
         final cachedMe = await OfflineService().getCache('user_me');
         if (cachedMe != null && cachedMe is Map) {
           final rawMyId = cachedMe['id'];
           _myUserId = rawMyId is num ? rawMyId.toInt() : int.tryParse(rawMyId?.toString() ?? '');
+          extractMyName(cachedMe);
           if (_myUserId != null) {
             await _loadMyReactions();
           }
@@ -524,19 +544,14 @@ class _ChatScreenState extends State<ChatScreen> {
         debugPrint('Ошибка загрузки ID пользователя из кэша: $e');
       }
 
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        final cached = prefs.getString('chat_settings_$_realChatId');
-        if (cached != null) {
-          _chatSettings = Map<String, dynamic>.from(jsonDecode(cached));
-        }
-      } catch (e) {
-        debugPrint('Ошибка загрузки кэшированных настроек: $e');
-      }
+      await _loadChatSettings();
 
       Map<String, dynamic>? me;
       try {
         me = await authService.getMe();
+        if (me != null) {
+          extractMyName(me);
+        }
       } catch (e) {
         debugPrint('Failed to getMe: $e');
       }
@@ -674,22 +689,6 @@ class _ChatScreenState extends State<ChatScreen> {
         debugPrint('Ошибка загрузки закрепленных сообщений: $e');
       }
 
-      try {
-        final settings = await chatService.getChatSettings(_realChatId);
-        final merged = Map<String, dynamic>.from(_chatSettings);
-        settings.forEach((key, value) {
-          if (value != null && value.toString().isNotEmpty) {
-            merged[key] = value;
-          }
-        });
-        setState(() {
-          _chatSettings = merged;
-        });
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('chat_settings_$_realChatId', jsonEncode(merged));
-      } catch (e) {
-        debugPrint('Ошибка загрузки настроек чата: $e');
-      }
 
       if (_realChatId > 0) {
         _startMessagePolling();
@@ -964,8 +963,8 @@ Future<void> _deleteSelectedMessages() async {
     final linkRegex = RegExp(r'https?://[^\s]+');
     final matches = linkRegex.allMatches(text);
     final double fontSize = _chatSettings['font_size'] != null 
-        ? (double.tryParse(_chatSettings['font_size'].toString()) ?? 14.0)
-        : 14.0;
+        ? (double.tryParse(_chatSettings['font_size'].toString()) ?? PreferencesService.getFontSize())
+        : PreferencesService.getFontSize();
     
     if (matches.isEmpty) {
       return Text(
@@ -1361,36 +1360,54 @@ Future<void> _deleteSelectedMessages() async {
     );
   }
 
+  Future<void> _loadChatSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final hasCustom = prefs.getBool('chat_has_custom_$_realChatId') ?? false;
+
+      Map<String, dynamic> loaded = {};
+      if (hasCustom) {
+        final chatStr = prefs.getString('chat_settings_$_realChatId');
+        if (chatStr != null && chatStr.isNotEmpty) {
+          try {
+            loaded = Map<String, dynamic>.from(jsonDecode(chatStr));
+          } catch (_) {}
+        }
+      }
+
+      if (loaded.isEmpty) {
+        final globalStr = prefs.getString('chat_settings_global');
+        if (globalStr != null && globalStr.isNotEmpty) {
+          try {
+            loaded = Map<String, dynamic>.from(jsonDecode(globalStr));
+          } catch (_) {}
+        } else {
+          loaded = {
+            'theme_preset': PreferencesService.getChatThemePreset(),
+            'bubble_radius': PreferencesService.getBubbleRadius(),
+            'font_size': PreferencesService.getFontSize(),
+            'name_color': PreferencesService.getNameColor(),
+            'chat_list_mode': PreferencesService.getChatListMode(),
+          };
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _chatSettings = loaded;
+        });
+      }
+    } catch (e) {
+      debugPrint('Ошибка загрузки настроек чата: $e');
+    }
+  }
+
   Future<void> _openChatSettings() async {
     await Navigator.pushNamed(
       context,
       '/chat-settings/${widget.chatId}',
     );
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final cached = prefs.getString('chat_settings_$_realChatId');
-      if (cached != null) {
-        if (mounted) {
-          setState(() {
-            _chatSettings = Map<String, dynamic>.from(jsonDecode(cached));
-          });
-        }
-      }
-    } catch (_) {}
-    try {
-      final freshSettings = await chatService.getChatSettings(_realChatId);
-      if (mounted) {
-        setState(() {
-          final merged = Map<String, dynamic>.from(_chatSettings);
-          freshSettings.forEach((key, value) {
-            if (value != null && value.toString().isNotEmpty) {
-              merged[key] = value;
-            }
-          });
-          _chatSettings = merged;
-        });
-      }
-    } catch (_) {}
+    await _loadChatSettings();
   }
 
   Future<void> _loadMyReactions() async {
@@ -2597,6 +2614,9 @@ Widget _buildAppBarHeader() {
             final horizontalPadding = isDesktop ? 24.0 : 16.0;
 
             final wallpaperUrl = _chatSettings['wallpaper_url'];
+            final presetId = _chatSettings['theme_preset']?.toString() ??
+                PreferencesService.getChatThemePreset();
+            final activePreset = ChatThemePreset.getById(presetId);
 
             return Stack(
               children: [
@@ -2618,6 +2638,18 @@ Widget _buildAppBarHeader() {
                               },
                             ),
                           ),
+                  )
+                else
+                  Positioned.fill(
+                    child: TelegramDoodlePattern(
+                      backgroundColor: theme.brightness == Brightness.dark
+                          ? activePreset.backgroundColor
+                          : activePreset.lightBackgroundColor,
+                      doodleColor: theme.brightness == Brightness.dark
+                          ? Colors.white
+                          : const Color(0xFF334155),
+                      opacity: theme.brightness == Brightness.dark ? 0.08 : 0.09,
+                    ),
                   ),
                 Column(
                   children: [
@@ -2762,16 +2794,30 @@ Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
      final customOtherColor = _parseColor(_chatSettings['other_bubble_color']);
      final customBotColor = _parseColor(_chatSettings['bot_bubble_color']);
 
+     final myNameColorHex = _chatSettings['name_color']?.toString() ??
+         PreferencesService.getNameColor();
+     final myNameColor = ChatNameColor.parse(myNameColorHex);
+
+     final presetId = _chatSettings['theme_preset']?.toString() ??
+         PreferencesService.getChatThemePreset();
+     final activePreset = ChatThemePreset.getById(presetId);
+
      final isBot = !msg.isOwn && (msg.senderId == null || msg.senderId == 0);
 
      final bubbleColor = msg.isOwn
-         ? (msg.isPending ? Colors.grey.shade500 : (customOwnColor ?? const Color(0xFF054582)))
+         ? (msg.isPending ? Colors.grey.shade500 : (customOwnColor ?? activePreset.ownBubbleGradient[0]))
          : (isBot
              ? (customBotColor ?? Colors.grey.shade100)
              : (customOtherColor ?? theme.colorScheme.surfaceContainerHighest));
 
      final textColor = bubbleColor.computeLuminance() > 0.55 ? Colors.black87 : Colors.white;
      final timeColor = textColor.withValues(alpha: 0.65);
+
+     final double bubbleRadius = (_chatSettings['bubble_radius'] is num
+         ? (_chatSettings['bubble_radius'] as num).toDouble()
+         : double.tryParse(_chatSettings['bubble_radius']?.toString() ?? '')) ??
+         PreferencesService.getBubbleRadius();
+     final double smallRadius = (bubbleRadius * 0.25).clamp(2.0, 6.0);
 
      return RepaintBoundary(
        child: Align(
@@ -2807,15 +2853,15 @@ Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
                              begin: Alignment.topLeft,
                              end: Alignment.bottomRight,
                            )
-                         : const LinearGradient(
-                             colors: [Color(0xFF054582), Color(0xFF0a7ac2)],
+                         : LinearGradient(
+                             colors: activePreset.ownBubbleGradient,
                              begin: Alignment.topLeft,
                              end: Alignment.bottomRight,
                            ))
                      : null,
                  color: isSelected
                      ? (msg.isOwn
-                         ? (customOwnColor ?? const Color(0xFF054582)).withValues(alpha: 0.5)
+                         ? (customOwnColor ?? activePreset.ownBubbleGradient[0]).withValues(alpha: 0.5)
                          : theme.colorScheme.primary.withValues(alpha: 0.2))
                      : (isHighlighted ? bubbleColor.withValues(alpha: 0.5) : bubbleColor),
                  border: isSelected
@@ -2824,10 +2870,10 @@ Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
                          ? Border.all(color: msg.isOwn ? Colors.white : theme.colorScheme.primary, width: 2.0)
                          : null),
                  borderRadius: BorderRadius.only(
-                   topLeft: const Radius.circular(20),
-                   topRight: const Radius.circular(20),
-                   bottomLeft: Radius.circular(msg.isOwn ? 20 : 4),
-                   bottomRight: Radius.circular(msg.isOwn ? 4 : 20),
+                   topLeft: Radius.circular(bubbleRadius),
+                   topRight: Radius.circular(bubbleRadius),
+                   bottomLeft: Radius.circular(msg.isOwn ? bubbleRadius : smallRadius),
+                   bottomRight: Radius.circular(msg.isOwn ? smallRadius : bubbleRadius),
                  ),
                 ),
                 child: Stack(
@@ -2835,7 +2881,19 @@ Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (!msg.isOwn)
+                        if (msg.isOwn)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 3),
+                            child: Text(
+                              _myLastName.isNotEmpty ? _myLastName : 'Вы',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: myNameColor,
+                              ),
+                            ),
+                          )
+                        else
                           Padding(
                             padding: const EdgeInsets.only(bottom: 4),
                             child: Text(
@@ -2846,7 +2904,7 @@ Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
                                 color: textColor == Colors.white
                                     ? Colors.cyanAccent.shade100
                                     : (theme.brightness == Brightness.dark
-                                        ? theme.colorScheme.primary
+                                        ? activePreset.accentColor
                                         : const Color(0xFF0058A8)),
                               ),
                             ),

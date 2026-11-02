@@ -1,15 +1,23 @@
 // lib/screens/chat_settings_screen.dart
+import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
-import '../widgets/gradient_scaffold.dart';
-import '../widgets/skeletons.dart';
+import '../widgets/telegram_doodle_pattern.dart';
+import '../widgets/responsive_layout.dart';
+import '../models/chat_theme_presets.dart';
+import '../services/app_theme.dart';
+import '../services/preferences_service.dart';
 import '../services/network_service.dart';
+import '../services/auth_service.dart';
+import '../services/upload_service.dart';
+import '../services/offline_service.dart';
 import '../main.dart';
 
 class ChatSettingsScreen extends StatefulWidget {
-  final String? chatId; // If null, global settings
+  final String? chatId; // If null, global settings for all chats
 
   const ChatSettingsScreen({super.key, this.chatId});
 
@@ -20,121 +28,125 @@ class ChatSettingsScreen extends StatefulWidget {
 class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
   bool _isLoading = false;
   bool _isSaving = false;
+  Timer? _debounceTimer;
 
-  // Settings State
-  String _ownBubbleColor = '#054582';
-  String _otherBubbleColor = '#E2E8F0';
-  String _botBubbleColor = '#F3F4F6';
-  double _fontSize = 14.0;
+  // Settings state
+  String _activePresetId = 'classic';
+  double _bubbleRadius = 17.0;
+  double _fontSize = 15.0;
+  String _chatListMode = 'two_line';
+  String _nameColorHex = '#10B981';
+  String _userName = 'Пользователь';
   String _wallpaperUrl = '';
 
-  // Preset Colors
-  final List<Map<String, String>> _ownColorPresets = [
-    {'name': 'SAVT Blue', 'hex': '#054582'},
-    {'name': 'SAVT Light Blue', 'hex': '#0a7ac2'},
-    {'name': 'Изумрудный', 'hex': '#10B981'},
-    {'name': 'Фиолетовый', 'hex': '#8B5CF6'},
-    {'name': 'Оранжевый', 'hex': '#F59E0B'},
-    {'name': 'Темный', 'hex': '#374151'},
-  ];
-
-  final List<Map<String, String>> _otherColorPresets = [
-    {'name': 'Светлый', 'hex': '#E2E8F0'},
-    {'name': 'Мятный', 'hex': '#D1FAE5'},
-    {'name': 'Лаванда', 'hex': '#EDE9FE'},
-    {'name': 'Абрикос', 'hex': '#FEF3C7'},
-    {'name': 'Серый', 'hex': '#F3F4F6'},
-  ];
-
-  final List<Map<String, String>> _botColorPresets = [
-    {'name': 'Стандарт', 'hex': '#F3F4F6'},
-    {'name': 'Светло-синий', 'hex': '#E0F2FE'},
-    {'name': 'Светло-зеленый', 'hex': '#DCFCE7'},
-    {'name': 'Светло-желтый', 'hex': '#FEF9C3'},
-  ];
-
-  final List<Map<String, String>> _solidWallpaperPresets = [
-    {'name': 'По умолчанию', 'hex': ''},
-    {'name': 'Темно-синий', 'hex': 'color:#1e293b'},
-    {'name': 'Глубокий синий', 'hex': 'color:#0f172a'},
-    {'name': 'Темный цинк', 'hex': 'color:#18181b'},
-    {'name': 'Светлый серый', 'hex': 'color:#f4f4f5'},
-    {'name': 'Светло-зеленый', 'hex': 'color:#f0fdf4'},
-    {'name': 'Светло-фиолетовый', 'hex': 'color:#faf5ff'},
-    {'name': 'Светло-синий', 'hex': 'color:#eff6ff'},
-  ];
+  String? _customOwnColor;
+  String? _customOtherColor;
+  String? _customBotColor;
 
   @override
   void initState() {
     super.initState();
-    _loadSettings();
+    _loadAllSettings();
   }
 
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    super.dispose();
+  }
+
+  bool get _isPerChat => widget.chatId != null;
+
   String get _cacheKey {
-    if (widget.chatId != null) {
+    if (_isPerChat) {
       return 'chat_settings_${widget.chatId}';
     }
     return 'chat_settings_global';
   }
 
-  Future<void> _loadSettings() async {
+  ChatThemePreset get _activePreset => ChatThemePreset.getById(_activePresetId);
+
+  Future<void> _loadAllSettings() async {
     setState(() => _isLoading = true);
 
-    // 1. Try to load from local cache first
+    // 1. Fetch user surname/name for the badge & preview
+    try {
+      final me = await authService.getMe();
+      final lName = me['last_name']?.toString()?.trim();
+      final fullName = me['full_name']?.toString()?.trim();
+      final fName = me['first_name']?.toString()?.trim();
+
+      if (lName != null && lName.isNotEmpty) {
+        _userName = lName;
+      } else if (fullName != null && fullName.isNotEmpty) {
+        _userName = fullName.split(' ').first;
+      } else if (fName != null && fName.isNotEmpty) {
+        _userName = fName;
+      }
+      if (mounted) setState(() {});
+    } catch (_) {}
+
+    // 2. Load from SharedPreferences
     try {
       final prefs = await SharedPreferences.getInstance();
-      final cached = prefs.getString(_cacheKey);
-      if (cached != null) {
-        final Map<String, dynamic> data =
-            Map<String, dynamic>.from(jsonDecode(cached));
-        _applyLoadedSettings(data);
+
+      final hasCustom = _isPerChat
+          ? (prefs.getBool('chat_has_custom_${widget.chatId}') ?? false)
+          : false;
+
+      if (_isPerChat && hasCustom) {
+        final chatCached = prefs.getString(_cacheKey);
+        if (chatCached != null && chatCached.isNotEmpty) {
+          final Map<String, dynamic> data =
+              Map<String, dynamic>.from(jsonDecode(chatCached));
+          _applySettingsMap(data);
+        }
+      } else {
+        // Global settings or initial values for uncustomized chat
+        final globalCached = prefs.getString('chat_settings_global');
+        if (globalCached != null && globalCached.isNotEmpty) {
+          final Map<String, dynamic> data =
+              Map<String, dynamic>.from(jsonDecode(globalCached));
+          _applySettingsMap(data);
+        } else {
+          _bubbleRadius = PreferencesService.getBubbleRadius();
+          _fontSize = PreferencesService.getFontSize();
+          _chatListMode = PreferencesService.getChatListMode();
+          _nameColorHex = PreferencesService.getNameColor();
+          _activePresetId = PreferencesService.getChatThemePreset();
+        }
       }
     } catch (e) {
-      debugPrint('Error loading cached settings: $e');
+      debugPrint('Error loading cached chat settings: $e');
     }
 
-    // 2. Fetch from server if online
+    // 3. Fetch from backend if online
     if (NetworkService.isOnline) {
       try {
-        Map<String, dynamic> settings;
-        final chatIdInt =
-            widget.chatId != null ? int.tryParse(widget.chatId!) : null;
-        if (chatIdInt != null) {
-          settings = await chatService.getChatSettings(chatIdInt);
+        final prefs = await SharedPreferences.getInstance();
+        final hasCustom = _isPerChat
+            ? (prefs.getBool('chat_has_custom_${widget.chatId}') ?? false)
+            : false;
+
+        Map<String, dynamic> settings = {};
+        if (_isPerChat) {
+          if (hasCustom) {
+            final chatIdInt = int.tryParse(widget.chatId!);
+            if (chatIdInt != null) {
+              settings = await chatService.getChatSettings(chatIdInt);
+            }
+          }
         } else {
           settings = await chatService.getGlobalSettings();
         }
 
-        if (mounted) {
+        if (mounted && settings.isNotEmpty) {
           setState(() {
-            final merged = <String, dynamic>{
-              'own_bubble_color': _ownBubbleColor,
-              'other_bubble_color': _otherBubbleColor,
-              'bot_bubble_color': _botBubbleColor,
-              'font_size': _fontSize.toInt(),
-              'wallpaper_url': _wallpaperUrl,
-            };
-            settings.forEach((key, value) {
-              if (value != null && value.toString().isNotEmpty) {
-                merged[key] = value;
-              }
-            });
-            _applyLoadedSettings(merged);
+            _applySettingsMap(settings);
           });
-
-          // Update cache with merged settings
-          final prefs = await SharedPreferences.getInstance();
-          final dataToCache = {
-            'own_bubble_color': _ownBubbleColor,
-            'other_bubble_color': _otherBubbleColor,
-            'bot_bubble_color': _botBubbleColor,
-            'font_size': _fontSize.toInt(),
-            'wallpaper_url': _wallpaperUrl,
-          };
-          await prefs.setString(_cacheKey, jsonEncode(dataToCache));
         }
       } catch (e) {
-        debugPrint('Error fetching settings from server: $e');
+        debugPrint('Error fetching chat settings from server: $e');
       }
     }
 
@@ -143,293 +155,236 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
     }
   }
 
-  void _applyLoadedSettings(Map<String, dynamic> settings) {
-    if (settings['own_bubble_color'] != null) {
-      _ownBubbleColor = settings['own_bubble_color'].toString();
+  void _applySettingsMap(Map<String, dynamic> data) {
+    if (data['theme_preset'] != null) {
+      _activePresetId = data['theme_preset'].toString();
     }
-    if (settings['other_bubble_color'] != null) {
-      _otherBubbleColor = settings['other_bubble_color'].toString();
+    if (data['bubble_radius'] != null) {
+      _bubbleRadius =
+          (double.tryParse(data['bubble_radius'].toString()) ?? 17.0)
+              .clamp(0.0, 24.0);
     }
-    if (settings['bot_bubble_color'] != null) {
-      _botBubbleColor = settings['bot_bubble_color'].toString();
+    if (data['font_size'] != null) {
+      _fontSize =
+          (double.tryParse(data['font_size'].toString()) ?? 15.0).clamp(11.0, 24.0);
     }
-    if (settings['font_size'] != null) {
-      _fontSize = double.tryParse(settings['font_size'].toString()) ?? 14.0;
+    if (data['chat_list_mode'] != null) {
+      _chatListMode = data['chat_list_mode'].toString();
     }
-    if (settings['wallpaper_url'] != null) {
-      _wallpaperUrl = settings['wallpaper_url'].toString();
+    if (data['name_color'] != null) {
+      _nameColorHex = data['name_color'].toString();
+    } else if (data['nick_color'] != null) {
+      _nameColorHex = data['nick_color'].toString();
+    }
+    if (data['wallpaper_url'] != null) {
+      _wallpaperUrl = data['wallpaper_url'].toString();
+    }
+    if (data['own_bubble_color'] != null) {
+      _customOwnColor = data['own_bubble_color'].toString();
+    }
+    if (data['other_bubble_color'] != null) {
+      _customOtherColor = data['other_bubble_color'].toString();
+    }
+    if (data['bot_bubble_color'] != null) {
+      _customBotColor = data['bot_bubble_color'].toString();
     }
   }
 
-  Future<void> _saveSettings() async {
-    setState(() => _isSaving = true);
+  void _onSettingChanged({bool immediate = false}) {
+    if (!_isPerChat) {
+      PreferencesService.saveBubbleRadius(_bubbleRadius);
+      PreferencesService.saveFontSize(_fontSize);
+      PreferencesService.saveChatListMode(_chatListMode);
+      PreferencesService.saveNameColor(_nameColorHex);
+      PreferencesService.saveChatThemePreset(_activePresetId);
 
-    final data = {
-      'own_bubble_color': _ownBubbleColor,
-      'other_bubble_color': _otherBubbleColor,
-      'bot_bubble_color': _botBubbleColor,
-      'font_size': _fontSize.toInt(),
-      'wallpaper_url': _wallpaperUrl,
-    };
+      _debounceTimer?.cancel();
+      if (immediate) {
+        _saveSettings(manual: false);
+      } else {
+        _debounceTimer =
+            Timer(const Duration(milliseconds: 500), () => _saveSettings(manual: false));
+      }
+    }
+  }
 
-    // 1. Save to local cache
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_cacheKey, jsonEncode(data));
-      _showSuccess('Настройки успешно сохранены');
-    } catch (e) {
-      debugPrint('Error caching settings: $e');
-      _showError('Ошибка локального сохранения настроек: $e');
+  Future<void> _saveSettings({bool manual = false}) async {
+    if (manual) {
+      setState(() => _isSaving = true);
     }
 
-    // 2. Sync to server in background if online (ignored if server settings endpoints aren't implemented)
-    if (NetworkService.isOnline) {
-      try {
-        final chatIdInt =
-            widget.chatId != null ? int.tryParse(widget.chatId!) : null;
-        if (chatIdInt != null) {
-          await chatService.updateChatSettings(chatIdInt, data);
-        } else {
-          await chatService.updateGlobalSettings(data);
+    final Map<String, dynamic> localData = {
+      'theme_preset': _activePresetId,
+      'bubble_radius': _bubbleRadius.toInt(),
+      'font_size': _fontSize.toInt(),
+      'chat_list_mode': _chatListMode,
+      'name_color': _nameColorHex,
+      'wallpaper_url': _wallpaperUrl,
+      'own_bubble_color': _customOwnColor ?? _activePreset.ownBubbleHex,
+      'other_bubble_color': _customOtherColor ?? _activePreset.otherBubbleHex,
+      'bot_bubble_color': _customBotColor ?? '#2A2938',
+    };
+
+    final Map<String, dynamic> serverPayload = {
+      'nick_color': _nameColorHex,
+      'font_size': _fontSize.toInt(),
+      'wallpaper_url': _wallpaperUrl.isNotEmpty ? _wallpaperUrl : null,
+      'own_bubble_color': _customOwnColor ?? _activePreset.ownBubbleHex,
+      'other_bubble_color': _customOtherColor ?? _activePreset.otherBubbleHex,
+      'bot_bubble_color': _customBotColor ?? '#2A2938',
+    };
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      if (_isPerChat) {
+        // Save ONLY for this chat ID
+        await prefs.setString(_cacheKey, jsonEncode(localData));
+        await prefs.setBool('chat_has_custom_${widget.chatId}', true);
+
+        if (NetworkService.isOnline) {
+          try {
+            final chatIdInt = int.tryParse(widget.chatId!);
+            if (chatIdInt != null) {
+              await chatService.updateChatSettings(chatIdInt, serverPayload);
+            }
+          } catch (e) {
+            debugPrint('Server per-chat settings sync failed (ignored): $e');
+          }
         }
-      } catch (e) {
-        debugPrint('Server settings sync failed (ignored): $e');
+      } else {
+        // Global settings: Save as global base AND reset all individual chats
+        await prefs.setString('chat_settings_global', jsonEncode(localData));
+        PreferencesService.saveBubbleRadius(_bubbleRadius);
+        PreferencesService.saveFontSize(_fontSize);
+        PreferencesService.saveChatListMode(_chatListMode);
+        PreferencesService.saveNameColor(_nameColorHex);
+        PreferencesService.saveChatThemePreset(_activePresetId);
+
+        // Clear all individual chat override caches so they follow the new global base
+        final chatIdsToReset = <int>{};
+        final allKeys = prefs.getKeys().toList();
+        for (final k in allKeys) {
+          if (k.startsWith('chat_settings_') && k != 'chat_settings_global') {
+            final id = int.tryParse(k.replaceFirst('chat_settings_', ''));
+            if (id != null) chatIdsToReset.add(id);
+            await prefs.remove(k);
+          } else if (k.startsWith('chat_has_custom_')) {
+            final id = int.tryParse(k.replaceFirst('chat_has_custom_', ''));
+            if (id != null) chatIdsToReset.add(id);
+            await prefs.remove(k);
+          }
+        }
+
+        try {
+          final cached = await OfflineService().getCache('user_chats');
+          if (cached is List) {
+            for (final c in cached) {
+              if (c is Map && c['id'] != null) {
+                final id = int.tryParse(c['id'].toString());
+                if (id != null) chatIdsToReset.add(id);
+              }
+            }
+          }
+        } catch (_) {}
+
+        if (NetworkService.isOnline) {
+          try {
+            await chatService.updateGlobalSettings(serverPayload);
+          } catch (e) {
+            debugPrint('Server global settings sync failed (ignored): $e');
+          }
+
+          for (final cid in chatIdsToReset) {
+            try {
+              await chatService.resetChatSettings(cid);
+            } catch (e) {
+              debugPrint('Server resetChatSettings failed for $cid (ignored): $e');
+            }
+          }
+        }
       }
+    } catch (e) {
+      debugPrint('Error caching chat settings: $e');
     }
 
     if (mounted) {
       setState(() => _isSaving = false);
+      if (manual) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _isPerChat
+                        ? 'Настройки для этого чата успешно сохранены!'
+                        : 'Настройки сохранены и применены ко всем чатам!',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF054582),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
-  Future<void> _resetSettings() async {
-    if (widget.chatId == null) return;
-    setState(() => _isSaving = true);
+  Future<void> _resetToDefaults() async {
+    final prefs = await SharedPreferences.getInstance();
 
-    try {
-      final chatIdInt = int.tryParse(widget.chatId!) ?? 0;
-      if (chatIdInt != 0) {
-        if (NetworkService.isOnline) {
+    if (_isPerChat) {
+      try {
+        final chatIdInt = int.tryParse(widget.chatId!) ?? 0;
+        if (chatIdInt != 0 && NetworkService.isOnline) {
           await chatService.resetChatSettings(chatIdInt);
         }
-        final prefs = await SharedPreferences.getInstance();
         await prefs.remove(_cacheKey);
+        await prefs.remove('chat_has_custom_${widget.chatId}');
+      } catch (_) {}
 
-        _showSuccess('Настройки чата сброшены к глобальным');
-        _loadSettings();
-      }
-    } catch (e) {
-      _showError('Ошибка сброса настроек: $e');
-    } finally {
+      await _loadAllSettings();
+
       if (mounted) {
-        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Настройки чата сброшены к общим'),
+            backgroundColor: Color(0xFF054582),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } else {
+      setState(() {
+        _activePresetId = 'classic';
+        _bubbleRadius = 17.0;
+        _fontSize = 15.0;
+        _chatListMode = 'two_line';
+        _nameColorHex = '#10B981';
+        _wallpaperUrl = '';
+        _customOwnColor = null;
+        _customOtherColor = null;
+        _customBotColor = null;
+      });
+
+      await _saveSettings(manual: true);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Все настройки сброшены по умолчанию для всех чатов'),
+            backgroundColor: Color(0xFF054582),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     }
-  }
-
-  void _showError(String text) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(text), backgroundColor: Colors.red),
-      );
-    }
-  }
-
-  void _showSuccess(String text) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(text), backgroundColor: Colors.green),
-      );
-    }
-  }
-
-  Color _parseColor(String hex) {
-    try {
-      final buffer = StringBuffer();
-      if (hex.length == 6 || hex.length == 7) buffer.write('ff');
-      buffer.write(hex.replaceFirst('#', ''));
-      return Color(int.parse(buffer.toString(), radix: 16));
-    } catch (_) {
-      return Colors.blue;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isPerChat = widget.chatId != null;
-
-    return GradientScaffold(
-      currentNavIndex: 2,
-      appBarTitle:
-          isPerChat ? 'Настройки этого чата' : 'Глобальные настройки чатов',
-      appBarLeading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 18),
-        onPressed: () => Navigator.pop(context),
-      ),
-      body: _isLoading
-          ? const SkeletonDetail()
-          : SingleChildScrollView(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12.0, vertical: 16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Own Messages Color
-                  _buildSectionHeader('Цвет ваших сообщений'),
-                  _buildColorSelector(_ownColorPresets, _ownBubbleColor, (hex) {
-                    setState(() => _ownBubbleColor = hex);
-                  }),
-                  const SizedBox(height: 20),
-
-                  // Other Messages Color
-                  _buildSectionHeader('Цвет сообщений собеседника'),
-                  _buildColorSelector(_otherColorPresets, _otherBubbleColor,
-                      (hex) {
-                    setState(() => _otherBubbleColor = hex);
-                  }),
-                  const SizedBox(height: 20),
-
-                  // Bot Messages Color
-                  _buildSectionHeader('Цвет сообщений бота/системы'),
-                  _buildColorSelector(_botColorPresets, _botBubbleColor, (hex) {
-                    setState(() => _botBubbleColor = hex);
-                  }),
-                  const SizedBox(height: 20),
-
-                  // Font Size
-                  _buildSectionHeader(
-                      'Размер шрифта сообщений: ${_fontSize.toInt()} px'),
-                  SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      activeTrackColor: theme.colorScheme.primary,
-                      thumbColor: theme.colorScheme.primary,
-                    ),
-                    child: Slider(
-                      value: _fontSize,
-                      min: 8,
-                      max: 24,
-                      divisions: 16,
-                      label: '${_fontSize.toInt()}',
-                      onChanged: (val) {
-                        setState(() => _fontSize = val);
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Wallpaper Selector
-                  _buildSectionHeader('Обои чата'),
-                  _buildWallpaperSelector(),
-                  const SizedBox(height: 30),
-
-                  // Action Buttons
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: _isSaving ? null : _saveSettings,
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12)),
-                          ),
-                          child: _isSaving
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                      color: Colors.white, strokeWidth: 2))
-                              : const Text('Сохранить',
-                                  style: TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                      if (isPerChat) ...[
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: _isSaving ? null : _resetSettings,
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              side: const BorderSide(color: Colors.red),
-                              foregroundColor: Colors.red,
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12)),
-                            ),
-                            child: const Text('Сбросить',
-                                style: TextStyle(
-                                    fontSize: 15, fontWeight: FontWeight.bold)),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 40),
-                ],
-              ),
-            ),
-    );
-  }
-
-  Widget _buildSectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10, left: 4),
-      child: Text(
-        title,
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-      ),
-    );
-  }
-
-  Widget _buildColorSelector(List<Map<String, String>> presets,
-      String selectedHex, Function(String) onSelect) {
-    return SizedBox(
-      height: 50,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: presets.length,
-        itemBuilder: (context, idx) {
-          final p = presets[idx];
-          final hex = p['hex']!;
-          final isSelected = hex.toLowerCase() == selectedHex.toLowerCase();
-          final color = _parseColor(hex);
-
-          return GestureDetector(
-            onTap: () => onSelect(hex),
-            child: Container(
-              margin: const EdgeInsets.only(right: 10),
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: isSelected ? Colors.white : Colors.transparent,
-                  width: 3,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.15),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: isSelected
-                  ? Icon(
-                      Icons.check,
-                      color: color.computeLuminance() > 0.6
-                          ? Colors.black
-                          : Colors.white,
-                    )
-                  : null,
-            ),
-          );
-        },
-      ),
-    );
   }
 
   Future<void> _pickWallpaperFromGallery() async {
@@ -439,146 +394,1606 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
 
     setState(() => _isLoading = true);
     try {
-      final url = await uploadService.uploadAttachment(image.path);
+      String url;
+      if (kIsWeb) {
+        final bytes = await image.readAsBytes();
+        url = await uploadService.uploadAttachmentBytes(bytes, image.name);
+      } else {
+        url = await uploadService.uploadAttachment(image.path);
+      }
       setState(() {
         _wallpaperUrl = url;
       });
-      _showSuccess('Фото успешно загружено для обоев');
+      _onSettingChanged(immediate: true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Обои успешно установлены'),
+            backgroundColor: Color(0xFF054582),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     } catch (e) {
-      _showError('Ошибка загрузки фото: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка загрузки фото: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Widget _buildWallpaperSelector() {
-    final theme = Theme.of(context);
-    final isUrlWallpaper = _wallpaperUrl.startsWith('http') ||
-        (!_wallpaperUrl.startsWith('color:#') && _wallpaperUrl.isNotEmpty);
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          spacing: 12,
-          runSpacing: 8,
-          alignment: WrapAlignment.start,
-          crossAxisAlignment: WrapCrossAlignment.center,
+    // SAVT Corporate Brand Palette
+    final Color bgColor = isDark ? const Color(0xFF0B1120) : const Color(0xFFF8FAFC);
+    final Color cardBg = isDark ? const Color(0xFF1A2332) : Colors.white;
+    final Color cardInnerBg = isDark ? const Color(0xFF141D2B) : const Color(0xFFF1F5F9);
+    final Color dividerColor = isDark ? const Color(0xFF2A3A4D) : const Color(0xFFE2E8F0);
+    final Color textPrimary = isDark ? Colors.white : const Color(0xFF1E293B);
+    final Color textSecondary = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+
+    // Brand Blue colors (replacing purple!)
+    final Color brandPrimary = isDark ? const Color(0xFF0A7AC2) : const Color(0xFF054582);
+    final Color brandAccent = isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7);
+    final Color buttonBg = isDark ? const Color(0xFF0A7AC2) : const Color(0xFF054582);
+
+    return Scaffold(
+      backgroundColor: bgColor,
+      appBar: AppBar(
+        backgroundColor: bgColor,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: textPrimary, size: 24),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ElevatedButton.icon(
-              onPressed: _pickWallpaperFromGallery,
-              icon: const Icon(Icons.photo_library, size: 18),
-              label: const Text('Выбрать из галереи'),
-              style: ElevatedButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+            Text(
+              _isPerChat ? 'Настройки этого чата' : 'Настройки всех чатов',
+              style: TextStyle(
+                color: textPrimary,
+                fontSize: 19,
+                fontWeight: FontWeight.w700,
               ),
             ),
-            if (isUrlWallpaper)
-              Stack(
+            if (_isPerChat)
+              Text(
+                'Индивидуальные параметры чата',
+                style: TextStyle(
+                  color: brandAccent,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+          ],
+        ),
+        actions: [
+          PopupMenuButton<String>(
+            icon: Icon(Icons.more_vert, color: textPrimary),
+            color: cardBg,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(color: dividerColor),
+            ),
+            onSelected: (val) {
+              if (val == 'reset') {
+                _resetToDefaults();
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'reset',
+                child: Row(
+                  children: [
+                    Icon(Icons.restart_alt, color: textSecondary, size: 20),
+                    const SizedBox(width: 12),
+                    Text(
+                      _isPerChat
+                          ? 'Сбросить к общим настройкам'
+                          : 'Сбросить все настройки',
+                      style: TextStyle(color: textPrimary),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      bottomNavigationBar: Container(
+        color: cardBg,
+        child: SafeArea(
+          child: ResponsiveContainer(
+            maxWidth: 600,
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+            child: ElevatedButton(
+              onPressed: _isSaving ? null : () => _saveSettings(manual: true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: buttonBg,
+                foregroundColor: Colors.white,
+                elevation: 2,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: _isSaving
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2.5,
+                      ),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.check_circle_outline, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          _isPerChat
+                              ? 'Сохранить для этого чата'
+                              : 'Сохранить для всех чатов',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+        ),
+      ),
+      body: _isLoading
+          ? Center(
+              child: CircularProgressIndicator(color: brandPrimary),
+            )
+          : ResponsiveContainer(
+              maxWidth: 600,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(bottom: 30),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                  // 1. LIVE CHAT PREVIEW AT TOP ("SAVT помощник")
+                  _buildLivePreviewCard(isDark),
+
+                  const SizedBox(height: 12),
+
+                  // 2. WALLPAPER & NAME COLOR CARD
+                  _buildWallpaperAndNameCard(
+                    isDark: isDark,
+                    cardBg: cardBg,
+                    dividerColor: dividerColor,
+                    textPrimary: textPrimary,
+                    accentColor: brandAccent,
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // 3. COLOR THEME PRESETS CAROUSEL CARD (No stickers!)
+                  _buildThemePresetsCard(
+                    isDark: isDark,
+                    cardBg: cardBg,
+                    dividerColor: dividerColor,
+                    textPrimary: textPrimary,
+                    accentColor: brandAccent,
+                    selectionBorderColor: brandAccent,
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // 4. FONT SIZE SLIDER CARD (NEW!)
+                  _buildFontSizeSliderCard(
+                    isDark: isDark,
+                    cardBg: cardBg,
+                    textPrimary: textPrimary,
+                    accentColor: brandAccent,
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // 5. BUBBLE CORNER RADIUS SLIDER CARD
+                  _buildBubbleCornerRadiusCard(
+                    isDark: isDark,
+                    cardBg: cardBg,
+                    textPrimary: textPrimary,
+                    accentColor: brandAccent,
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // 6. CHAT LIST MODE CARD (Two-line / Three-line)
+                  _buildChatListModeCard(
+                    isDark: isDark,
+                    cardBg: cardBg,
+                    cardInnerBg: cardInnerBg,
+                    textPrimary: textPrimary,
+                    textSecondary: textSecondary,
+                    accentColor: brandAccent,
+                    selectionBorderColor: brandAccent,
+                  ),
+                ],
+              ),
+            ),
+          ),
+    );
+  }
+
+  // ---------------------------------------------------------
+  // 1. LIVE CHAT PREVIEW AREA ("SAVT помощник")
+  // ---------------------------------------------------------
+  Widget _buildLivePreviewCard(bool isDark) {
+    final preset = _activePreset;
+    final nameColor = ChatNameColor.parse(_nameColorHex);
+    final isCustomImage = _wallpaperUrl.isNotEmpty &&
+        !_wallpaperUrl.startsWith('color:#') &&
+        !_wallpaperUrl.startsWith('pattern:');
+    final isColorOnly = _wallpaperUrl.startsWith('color:#');
+
+    Color bgColor = isDark ? preset.backgroundColor : preset.lightBackgroundColor;
+    if (isColorOnly) {
+      bgColor = ChatNameColor.parse(_wallpaperUrl.replaceFirst('color:', ''));
+    }
+
+    final double effectiveRadius = _bubbleRadius;
+    final double smallRadius = (effectiveRadius * 0.25).clamp(2.0, 6.0);
+
+    return Container(
+      height: 165,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: bgColor,
+      ),
+      child: Stack(
+        children: [
+          // Background: image or vector doodle pattern (no hearts!)
+          Positioned.fill(
+            child: isCustomImage
+                ? Image.network(
+                    _wallpaperUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => TelegramDoodlePattern(
+                      backgroundColor: bgColor,
+                      doodleColor: isDark ? Colors.white : const Color(0xFF334155),
+                      opacity: isDark ? 0.12 : 0.10,
+                    ),
+                  )
+                : TelegramDoodlePattern(
+                    backgroundColor: bgColor,
+                    doodleColor: isDark ? Colors.white : const Color(0xFF334155),
+                    opacity: isDark ? 0.14 : 0.10,
+                  ),
+          ),
+
+          // Outgoing message bubble aligned to the top-right
+          Positioned(
+            top: 20,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              constraints: const BoxConstraints(maxWidth: 270),
+              decoration: BoxDecoration(
+                gradient: _customOwnColor == null
+                    ? LinearGradient(
+                        colors: preset.ownBubbleGradient,
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      )
+                    : null,
+                color: _customOwnColor != null
+                    ? ChatNameColor.parse(_customOwnColor!)
+                    : null,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(effectiveRadius),
+                  topRight: Radius.circular(effectiveRadius),
+                  bottomLeft: Radius.circular(effectiveRadius),
+                  bottomRight: Radius.circular(smallRadius),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.15),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: theme.colorScheme.primary, width: 2),
-                      image: DecorationImage(
-                        image: NetworkImage(_wallpaperUrl),
-                        fit: BoxFit.cover,
+                  // User's Surname / Name header with chosen name color
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 2.5),
+                    child: Text(
+                      _userName,
+                      style: TextStyle(
+                        color: nameColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
-                  Positioned(
-                    top: -2,
-                    right: -2,
-                    child: GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _wallpaperUrl = '';
-                        });
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          'SAVT помощник',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: _fontSize,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 1.0),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '09:57',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                            SizedBox(width: 3),
+                            Icon(
+                              Icons.done_all,
+                              size: 15,
+                              color: Colors.white70,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------
+  // 2. WALLPAPER & NAME COLOR CARD
+  // ---------------------------------------------------------
+  Widget _buildWallpaperAndNameCard({
+    required bool isDark,
+    required Color cardBg,
+    required Color dividerColor,
+    required Color textPrimary,
+    required Color accentColor,
+  }) {
+    final nameColor = ChatNameColor.parse(_nameColorHex);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+      ),
+      child: Column(
+        children: [
+          ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+            leading: Icon(
+              Icons.wallpaper_rounded,
+              color: accentColor,
+              size: 24,
+            ),
+            title: Text(
+              'Изменить обои',
+              style: TextStyle(
+                color: textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            trailing: Icon(
+              Icons.chevron_right,
+              color: isDark ? Colors.white38 : Colors.black38,
+              size: 20,
+            ),
+            onTap: () => _showWallpaperBottomSheet(context, isDark, cardBg, textPrimary, accentColor, dividerColor),
+          ),
+          Divider(height: 1, indent: 56, color: dividerColor),
+
+          ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+            leading: Icon(
+              Icons.palette_outlined,
+              color: accentColor,
+              size: 24,
+            ),
+            title: Text(
+              'Изменить цвет имени',
+              style: TextStyle(
+                color: textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              decoration: BoxDecoration(
+                color: nameColor.withValues(alpha: isDark ? 0.18 : 0.12),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: nameColor.withValues(alpha: 0.5),
+                  width: 1,
+                ),
+              ),
+              child: Text(
+                _userName,
+                style: TextStyle(
+                  color: nameColor,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            onTap: () => _showNameColorBottomSheet(context, isDark, cardBg, textPrimary, accentColor, dividerColor),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------
+  // 3. COLOR THEME PRESETS CAROUSEL (No stickers!)
+  // ---------------------------------------------------------
+  Widget _buildThemePresetsCard({
+    required bool isDark,
+    required Color cardBg,
+    required Color dividerColor,
+    required Color textPrimary,
+    required Color accentColor,
+    required Color selectionBorderColor,
+  }) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 14),
+      padding: const EdgeInsets.only(top: 14),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Цветовая тема',
+              style: TextStyle(
+                color: accentColor,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Horizontal Carousel of Presets (clean without stickers)
+          SizedBox(
+            height: 125,
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              scrollDirection: Axis.horizontal,
+              itemCount: ChatThemePreset.presets.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (context, index) {
+                final preset = ChatThemePreset.presets[index];
+                final isSelected = _activePresetId == preset.id;
+                final Color presetBg = isDark ? preset.backgroundColor : preset.lightBackgroundColor;
+
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _activePresetId = preset.id;
+                      _customOwnColor = null;
+                      _customOtherColor = null;
+                    });
+                    _onSettingChanged();
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 76,
+                    height: 122,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isSelected ? selectionBorderColor : (isDark ? Colors.transparent : Colors.black12),
+                        width: isSelected ? 2.5 : 1.0,
+                      ),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(13),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          // Doodle Pattern Background (no hearts)
+                          TelegramDoodlePattern(
+                            backgroundColor: presetBg,
+                            doodleColor: isDark ? Colors.white : const Color(0xFF334155),
+                            opacity: isDark ? 0.12 : 0.10,
+                          ),
+
+                          // Mock message bubbles without stickers
+                          Padding(
+                            padding: const EdgeInsets.all(7.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const SizedBox(height: 4),
+
+                                // Outgoing bubble pill
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: Container(
+                                    width: 50,
+                                    height: 18,
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: preset.ownBubbleGradient,
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      borderRadius: BorderRadius.circular(9),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+
+                                // Incoming bubble pill
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Container(
+                                    width: 44,
+                                    height: 16,
+                                    decoration: BoxDecoration(
+                                      color: isDark
+                                          ? const Color(0xFF26252E).withValues(alpha: 0.9)
+                                          : const Color(0xFFE2E8F0),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                ),
+
+                                const Spacer(),
+
+                                // Clean indicator / checkmark at bottom (NO EMOJI STICKERS)
+                                Center(
+                                  child: isSelected
+                                      ? Container(
+                                          padding: const EdgeInsets.all(3),
+                                          decoration: BoxDecoration(
+                                            color: accentColor,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(
+                                            Icons.check,
+                                            size: 13,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const SizedBox(height: 19),
+                                ),
+                                const SizedBox(height: 5),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+
+          const SizedBox(height: 12),
+          Divider(height: 1, indent: 16, color: dividerColor),
+
+          // Toggle Day/Night Theme Tile
+          ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+            leading: Icon(
+              isDark ? Icons.wb_sunny_outlined : Icons.dark_mode_outlined,
+              color: accentColor,
+              size: 24,
+            ),
+            title: Text(
+              isDark
+                  ? 'Переключить на дневную тему'
+                  : 'Переключить на ночную тему',
+              style: TextStyle(
+                color: textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            onTap: () {
+              final newMode = isDark ? ThemeMode.light : ThemeMode.dark;
+              AppTheme.themeNotifier.value = newMode;
+              AppTheme.saveTheme(newMode);
+              PreferencesService.saveThemeChoice(!isDark);
+            },
+          ),
+
+          Divider(height: 1, indent: 56, color: dividerColor),
+
+          // Theme Settings Tile
+          ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+            leading: Icon(
+              Icons.brush_outlined,
+              color: accentColor,
+              size: 24,
+            ),
+            title: Text(
+              'Настройки темы',
+              style: TextStyle(
+                color: textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            trailing: Icon(
+              Icons.chevron_right,
+              color: isDark ? Colors.white38 : Colors.black38,
+              size: 20,
+            ),
+            onTap: () => _showThemeSettingsBottomSheet(context, isDark, cardBg, textPrimary, accentColor, dividerColor),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------
+  // 4. FONT SIZE SLIDER CARD (Just like Bubble Corner Radius!)
+  // ---------------------------------------------------------
+  Widget _buildFontSizeSliderCard({
+    required bool isDark,
+    required Color cardBg,
+    required Color textPrimary,
+    required Color accentColor,
+  }) {
+    final inactiveColor = isDark ? const Color(0xFF2A3A4D) : const Color(0xFFE2E8F0);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Размер текста сообщений',
+            style: TextStyle(
+              color: accentColor,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    activeTrackColor: accentColor,
+                    thumbColor: accentColor,
+                    inactiveTrackColor: inactiveColor,
+                    trackHeight: 3.5,
+                    thumbShape:
+                        const RoundSliderThumbShape(enabledThumbRadius: 8),
+                    overlayShape:
+                        const RoundSliderOverlayShape(overlayRadius: 16),
+                    overlayColor: accentColor.withValues(alpha: 0.2),
+                  ),
+                  child: Slider(
+                    value: _fontSize,
+                    min: 11,
+                    max: 24,
+                    divisions: 13,
+                    onChanged: (val) {
+                      setState(() => _fontSize = val);
+                      _onSettingChanged();
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 44,
+                child: Text(
+                  '${_fontSize.toInt()} px',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------
+  // 5. BUBBLE CORNER RADIUS SLIDER CARD
+  // ---------------------------------------------------------
+  Widget _buildBubbleCornerRadiusCard({
+    required bool isDark,
+    required Color cardBg,
+    required Color textPrimary,
+    required Color accentColor,
+  }) {
+    final inactiveColor = isDark ? const Color(0xFF2A3A4D) : const Color(0xFFE2E8F0);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Углы блоков с сообщениями',
+            style: TextStyle(
+              color: accentColor,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    activeTrackColor: accentColor,
+                    thumbColor: accentColor,
+                    inactiveTrackColor: inactiveColor,
+                    trackHeight: 3.5,
+                    thumbShape:
+                        const RoundSliderThumbShape(enabledThumbRadius: 8),
+                    overlayShape:
+                        const RoundSliderOverlayShape(overlayRadius: 16),
+                    overlayColor: accentColor.withValues(alpha: 0.2),
+                  ),
+                  child: Slider(
+                    value: _bubbleRadius,
+                    min: 0,
+                    max: 24,
+                    divisions: 24,
+                    onChanged: (val) {
+                      setState(() => _bubbleRadius = val);
+                      _onSettingChanged();
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 36,
+                child: Text(
+                  '${_bubbleRadius.toInt()}',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------
+  // 6. CHAT LIST MODE CARD (Two-line / Three-line)
+  // ---------------------------------------------------------
+  Widget _buildChatListModeCard({
+    required bool isDark,
+    required Color cardBg,
+    required Color cardInnerBg,
+    required Color textPrimary,
+    required Color textSecondary,
+    required Color accentColor,
+    required Color selectionBorderColor,
+  }) {
+    final isTwoLine = _chatListMode == 'two_line';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Список чатов',
+            style: TextStyle(
+              color: accentColor,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              // Two-line Option
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() => _chatListMode = 'two_line');
+                    _onSettingChanged();
+                  },
+                  child: Column(
+                    children: [
+                      Container(
+                        height: 74,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: cardInnerBg,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color:
+                                isTwoLine ? selectionBorderColor : (isDark ? Colors.transparent : Colors.black12),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            // 2-line graphic
+                            Expanded(
+                              child: Column(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  _buildMockChatLine(linesCount: 1, isDark: isDark),
+                                  _buildMockChatLine(linesCount: 1, isDark: isDark),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+
+                            // Radio button
+                            _buildRadioIndicator(isSelected: isTwoLine, accentColor: accentColor, isDark: isDark),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Двустрочный',
+                        style: TextStyle(
+                          color: isTwoLine ? textPrimary : textSecondary,
+                          fontSize: 13,
+                          fontWeight:
+                              isTwoLine ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 12),
+
+              // Three-line Option
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() => _chatListMode = 'three_line');
+                    _onSettingChanged();
+                  },
+                  child: Column(
+                    children: [
+                      Container(
+                        height: 74,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: cardInnerBg,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color:
+                                !isTwoLine ? selectionBorderColor : (isDark ? Colors.transparent : Colors.black12),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            // 3-line graphic
+                            Expanded(
+                              child: Column(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  _buildMockChatLine(linesCount: 2, isDark: isDark),
+                                  _buildMockChatLine(linesCount: 2, isDark: isDark),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+
+                            // Radio button
+                            _buildRadioIndicator(isSelected: !isTwoLine, accentColor: accentColor, isDark: isDark),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Трехстрочный',
+                        style: TextStyle(
+                          color: !isTwoLine ? textPrimary : textSecondary,
+                          fontSize: 13,
+                          fontWeight:
+                              !isTwoLine ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMockChatLine({required int linesCount, required bool isDark}) {
+    final avatarColor = isDark ? const Color(0xFF2A3A4D) : const Color(0xFFCBD5E1);
+    final titleBarColor = isDark ? const Color(0xFF3B4F68) : const Color(0xFF94A3B8);
+    final subBarColor = isDark ? const Color(0xFF223042) : const Color(0xFFE2E8F0);
+
+    return Row(
+      children: [
+        Container(
+          width: 16,
+          height: 16,
+          decoration: BoxDecoration(
+            color: avatarColor,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 44,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: titleBarColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 3),
+              Container(
+                width: 65,
+                height: 3.5,
+                decoration: BoxDecoration(
+                  color: subBarColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              if (linesCount == 2) ...[
+                const SizedBox(height: 2.5),
+                Container(
+                  width: 50,
+                  height: 3.5,
+                  decoration: BoxDecoration(
+                    color: subBarColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRadioIndicator({required bool isSelected, required Color accentColor, required bool isDark}) {
+    return Container(
+      width: 20,
+      height: 20,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: isSelected ? accentColor : (isDark ? const Color(0xFF475569) : const Color(0xFF9CA3AF)),
+          width: 2,
+        ),
+      ),
+      child: isSelected
+          ? Center(
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: accentColor,
+                ),
+              ),
+            )
+          : null,
+    );
+  }
+
+  // ---------------------------------------------------------
+  // MODAL BOTTOM SHEETS
+  // ---------------------------------------------------------
+  void _showWallpaperBottomSheet(
+    BuildContext context,
+    bool isDark,
+    Color cardBg,
+    Color textPrimary,
+    Color accentColor,
+    Color dividerColor,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: cardBg,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white24 : Colors.black12,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Обои чата',
+                  style: TextStyle(
+                    color: textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Gallery Picker Button
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: accentColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.photo_library_outlined, color: accentColor),
+                  ),
+                  title: Text('Выбрать из галереи',
+                      style: TextStyle(color: textPrimary, fontSize: 15)),
+                  trailing: Icon(Icons.chevron_right,
+                      color: isDark ? Colors.white38 : Colors.black38, size: 20),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickWallpaperFromGallery();
+                  },
+                ),
+
+                Divider(color: dividerColor, height: 16),
+                Text(
+                  'Однотонный фон',
+                  style: TextStyle(
+                    color: accentColor,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // Solid Colors List
+                SizedBox(
+                  height: 48,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: [
+                      _buildWallpaperColorCircle('', 'По умолчанию', isDark, accentColor),
+                      _buildWallpaperColorCircle('#0B1120', 'SAVT Темный', isDark, accentColor),
+                      _buildWallpaperColorCircle('#1E293B', 'Синий сланец', isDark, accentColor),
+                      _buildWallpaperColorCircle('#064E3B', 'Изумруд', isDark, accentColor),
+                      _buildWallpaperColorCircle('#054582', 'SAVT Синий', isDark, accentColor),
+                      _buildWallpaperColorCircle('#FFFFFF', 'Белый', isDark, accentColor),
+                      _buildWallpaperColorCircle('#F1F5F9', 'Светло-серый', isDark, accentColor),
+                    ],
+                  ),
+                ),
+
+                if (_wallpaperUrl.isNotEmpty) ...[
+                  Divider(color: dividerColor, height: 20),
+                  Center(
+                    child: TextButton.icon(
+                      onPressed: () {
+                        setState(() => _wallpaperUrl = '');
+                        _onSettingChanged(immediate: true);
+                        Navigator.pop(ctx);
                       },
-                      child: const CircleAvatar(
-                        radius: 10,
-                        backgroundColor: Colors.red,
-                        child: Icon(Icons.close, size: 12, color: Colors.white),
+                      icon: const Icon(Icons.delete_outline,
+                          color: Colors.redAccent, size: 18),
+                      label: const Text(
+                        'Сбросить обои к стандартным',
+                        style: TextStyle(color: Colors.redAccent),
                       ),
                     ),
                   ),
                 ],
-              )
-            else if (_wallpaperUrl.isEmpty)
-              const Text('Обои по умолчанию',
-                  style: TextStyle(color: Colors.grey, fontSize: 13))
-            else
-              const SizedBox.shrink(),
-          ],
-        ),
-        const SizedBox(height: 16),
-        _buildSectionHeader('Или выберите цвет фона:'),
-        SizedBox(
-          height: 50,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: _solidWallpaperPresets.length,
-            itemBuilder: (context, idx) {
-              final p = _solidWallpaperPresets[idx];
-              final hexValue = p['hex']!;
-              final isSelected = _wallpaperUrl == hexValue;
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
-              Color color;
-              if (hexValue.isEmpty) {
-                color = Colors.grey.shade300;
-              } else {
-                color = _parseColor(hexValue.replaceFirst('color:', ''));
-              }
+  Widget _buildWallpaperColorCircle(String hex, String label, bool isDark, Color accentColor) {
+    final isSelected = hex.isEmpty
+        ? _wallpaperUrl.isEmpty
+        : _wallpaperUrl == 'color:$hex';
+    final color =
+        hex.isEmpty ? (isDark ? const Color(0xFF1A2332) : const Color(0xFFE2E8F0)) : ChatNameColor.parse(hex);
 
-              return GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _wallpaperUrl = hexValue;
-                  });
-                },
-                child: Container(
-                  margin: const EdgeInsets.only(right: 10),
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: isSelected
-                          ? theme.colorScheme.primary
-                          : Colors.transparent,
-                      width: 3.0,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.15),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: hexValue.isEmpty
-                      ? const Icon(Icons.block, color: Colors.grey)
-                      : (isSelected
-                          ? Icon(
-                              Icons.check,
-                              color: color.computeLuminance() > 0.6
-                                  ? Colors.black
-                                  : Colors.white,
-                            )
-                          : null),
-                ),
-              );
-            },
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _wallpaperUrl = hex.isEmpty ? '' : 'color:$hex';
+        });
+        _onSettingChanged();
+        Navigator.pop(context);
+      },
+      child: Container(
+        margin: const EdgeInsets.only(right: 12),
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: isSelected ? accentColor : (isDark ? Colors.white24 : Colors.black12),
+            width: isSelected ? 3 : 1,
           ),
         ),
-      ],
+        child: isSelected
+            ? Icon(Icons.check,
+                color: color.computeLuminance() > 0.5 ? Colors.black : Colors.white,
+                size: 20)
+            : (hex.isEmpty
+                ? Icon(Icons.block,
+                    color: isDark ? Colors.white38 : Colors.black38, size: 18)
+                : null),
+      ),
+    );
+  }
+
+  void _showNameColorBottomSheet(
+    BuildContext context,
+    bool isDark,
+    Color cardBg,
+    Color textPrimary,
+    Color accentColor,
+    Color dividerColor,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: cardBg,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final currentColor = ChatNameColor.parse(_nameColorHex);
+            final innerBg = isDark ? const Color(0xFF141D2B) : const Color(0xFFF1F5F9);
+
+            return SafeArea(
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white24 : Colors.black12,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      'Цвет имени',
+                      style: TextStyle(
+                        color: textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Preview badge banner
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: innerBg,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: currentColor.withValues(alpha: isDark ? 0.2 : 0.15),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: currentColor.withValues(alpha: 0.6),
+                                width: 1.2,
+                              ),
+                            ),
+                            child: Text(
+                              _userName,
+                              style: TextStyle(
+                                color: currentColor,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Фамилия над вашими сообщениями будет окрашена этим цветом',
+                              style: TextStyle(
+                                color: isDark ? Colors.white70 : const Color(0xFF4B5563),
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Palette circles
+                    SizedBox(
+                      height: 52,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: ChatNameColor.palette.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 10),
+                        itemBuilder: (context, idx) {
+                          final item = ChatNameColor.palette[idx];
+                          final isSelected =
+                              item.hex.toLowerCase() == _nameColorHex.toLowerCase();
+
+                          return GestureDetector(
+                            onTap: () {
+                              setSheetState(() => _nameColorHex = item.hex);
+                              setState(() => _nameColorHex = item.hex);
+                              _onSettingChanged();
+                            },
+                            child: Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: item.color,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: isSelected
+                                      ? (isDark ? Colors.white : Colors.black87)
+                                      : Colors.transparent,
+                                  width: 3,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: item.color.withValues(alpha: 0.35),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: isSelected
+                                  ? const Icon(Icons.check,
+                                      color: Colors.white, size: 22)
+                                  : null,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showThemeSettingsBottomSheet(
+    BuildContext context,
+    bool isDark,
+    Color cardBg,
+    Color textPrimary,
+    Color accentColor,
+    Color dividerColor,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: cardBg,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white24 : Colors.black12,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      'Настройки темы',
+                      style: TextStyle(
+                        color: textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Custom bubble color pickers
+                    Text(
+                      'Цвет исходящих сообщений',
+                      style: TextStyle(
+                        color: accentColor,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 44,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          _buildColorChoice(
+                            hex: _activePreset.ownBubbleHex,
+                            name: 'По теме',
+                            isSelected: _customOwnColor == null,
+                            isDark: isDark,
+                            onSelect: () {
+                              setSheetState(() => _customOwnColor = null);
+                              setState(() => _customOwnColor = null);
+                              _onSettingChanged();
+                            },
+                          ),
+                          _buildColorChoice(
+                            hex: '#054582',
+                            name: 'SAVT Blue',
+                            isSelected: _customOwnColor == '#054582',
+                            isDark: isDark,
+                            onSelect: () {
+                              setSheetState(() => _customOwnColor = '#054582');
+                              setState(() => _customOwnColor = '#054582');
+                              _onSettingChanged();
+                            },
+                          ),
+                          _buildColorChoice(
+                            hex: '#0A7AC2',
+                            name: 'SAVT Light',
+                            isSelected: _customOwnColor == '#0A7AC2',
+                            isDark: isDark,
+                            onSelect: () {
+                              setSheetState(() => _customOwnColor = '#0A7AC2');
+                              setState(() => _customOwnColor = '#0A7AC2');
+                              _onSettingChanged();
+                            },
+                          ),
+                          _buildColorChoice(
+                            hex: '#10B981',
+                            name: 'Изумруд',
+                            isSelected: _customOwnColor == '#10B981',
+                            isDark: isDark,
+                            onSelect: () {
+                              setSheetState(() => _customOwnColor = '#10B981');
+                              setState(() => _customOwnColor = '#10B981');
+                              _onSettingChanged();
+                            },
+                          ),
+                          _buildColorChoice(
+                            hex: '#F59E0B',
+                            name: 'Оранж',
+                            isSelected: _customOwnColor == '#F59E0B',
+                            isDark: isDark,
+                            onSelect: () {
+                              setSheetState(() => _customOwnColor = '#F59E0B');
+                              setState(() => _customOwnColor = '#F59E0B');
+                              _onSettingChanged();
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildColorChoice({
+    required String hex,
+    required String name,
+    required bool isSelected,
+    required bool isDark,
+    required VoidCallback onSelect,
+  }) {
+    final color = ChatNameColor.parse(hex);
+
+    return GestureDetector(
+      onTap: onSelect,
+      child: Container(
+        margin: const EdgeInsets.only(right: 10),
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: isSelected ? (isDark ? Colors.white : Colors.black87) : Colors.transparent,
+            width: 2.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.08),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: isSelected
+            ? const Icon(Icons.check, color: Colors.white, size: 18)
+            : null,
+      ),
     );
   }
 }
