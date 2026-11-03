@@ -317,46 +317,11 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
         PreferencesService.saveChatThemePreset(_activePresetId);
         PreferencesService.saveWallpaperUrl(_wallpaperUrl);
 
-        // Clear all individual chat override caches so they follow the new global base
-        final chatIdsToReset = <int>{};
-        final allKeys = prefs.getKeys().toList();
-        for (final k in allKeys) {
-          if (k.startsWith('chat_settings_') && k != 'chat_settings_global') {
-            final id = int.tryParse(k.replaceFirst('chat_settings_', ''));
-            if (id != null) chatIdsToReset.add(id);
-            await prefs.remove(k);
-          } else if (k.startsWith('chat_has_custom_')) {
-            final id = int.tryParse(k.replaceFirst('chat_has_custom_', ''));
-            if (id != null) chatIdsToReset.add(id);
-            await prefs.remove(k);
-          }
-        }
-
-        try {
-          final cached = await OfflineService().getCache('user_chats');
-          if (cached is List) {
-            for (final c in cached) {
-              if (c is Map && c['id'] != null) {
-                final id = int.tryParse(c['id'].toString());
-                if (id != null) chatIdsToReset.add(id);
-              }
-            }
-          }
-        } catch (_) {}
-
         if (NetworkService.isOnline) {
           try {
             await chatService.updateGlobalSettings(serverPayload);
           } catch (e) {
             debugPrint('Server global settings sync failed (ignored): $e');
-          }
-
-          for (final cid in chatIdsToReset) {
-            try {
-              await chatService.resetChatSettings(cid);
-            } catch (e) {
-              debugPrint('Server resetChatSettings failed for $cid (ignored): $e');
-            }
           }
         }
       }
@@ -426,12 +391,21 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
         );
       }
     } else {
+      final allKeys = prefs.getKeys().toList();
+      for (final k in allKeys) {
+        if (k.startsWith('chat_settings_') && k != 'chat_settings_global') {
+          await prefs.remove(k);
+        } else if (k.startsWith('chat_has_custom_')) {
+          await prefs.remove(k);
+        }
+      }
+
       setState(() {
         _activePresetId = 'classic';
         _bubbleRadius = 17.0;
         _fontSize = 15.0;
         _chatListMode = 'two_line';
-        _nameColorHex = '#10B981';
+        _nameColorHex = '#054582';
         _wallpaperUrl = '';
         _customOwnColor = null;
         _customOtherColor = null;
