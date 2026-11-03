@@ -69,7 +69,10 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
     super.dispose();
   }
 
-  bool get _isPerChat => widget.chatId != null;
+  bool get _isPerChat =>
+      widget.chatId != null &&
+      widget.chatId!.isNotEmpty &&
+      widget.chatId != 'null';
 
   String get _cacheKey {
     if (_isPerChat) {
@@ -101,15 +104,25 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
     } catch (_) {}
 
     // 2. Load from SharedPreferences
+    int? resolvedSupId;
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      final hasCustom = _isPerChat
-          ? (prefs.getBool('chat_has_custom_${widget.chatId}') ?? false)
-          : false;
+      if (widget.chatId == 'support') {
+        try {
+          resolvedSupId = await chatService.getSupportChatId();
+        } catch (_) {}
+      }
+
+      final hasCustomDirect = prefs.getBool('chat_has_custom_${widget.chatId}') ?? false;
+      final hasCustomSup = resolvedSupId != null && (prefs.getBool('chat_has_custom_$resolvedSupId') ?? false);
+      final hasCustom = _isPerChat ? (hasCustomDirect || hasCustomSup) : false;
 
       if (_isPerChat && hasCustom) {
-        final chatCached = prefs.getString(_cacheKey);
+        String? chatCached = prefs.getString(_cacheKey);
+        if (chatCached == null && resolvedSupId != null) {
+          chatCached = prefs.getString('chat_settings_$resolvedSupId');
+        }
         if (chatCached != null && chatCached.isNotEmpty) {
           final Map<String, dynamic> data =
               Map<String, dynamic>.from(jsonDecode(chatCached));
@@ -139,15 +152,15 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
     if (NetworkService.isOnline) {
       try {
         final prefs = await SharedPreferences.getInstance();
-        final hasCustom = _isPerChat
-            ? (prefs.getBool('chat_has_custom_${widget.chatId}') ?? false)
-            : false;
+        final hasCustomDirect = prefs.getBool('chat_has_custom_${widget.chatId}') ?? false;
+        final hasCustomSup = resolvedSupId != null && (prefs.getBool('chat_has_custom_$resolvedSupId') ?? false);
+        final hasCustom = _isPerChat ? (hasCustomDirect || hasCustomSup) : false;
 
         Map<String, dynamic> settings = {};
         if (_isPerChat) {
           if (hasCustom) {
-            final chatIdInt = int.tryParse(widget.chatId!);
-            if (chatIdInt != null) {
+            final chatIdInt = int.tryParse(widget.chatId!) ?? resolvedSupId;
+            if (chatIdInt != null && chatIdInt > 0) {
               settings = await chatService.getChatSettings(chatIdInt);
             }
           }
@@ -212,14 +225,14 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
       PreferencesService.saveChatListMode(_chatListMode);
       PreferencesService.saveNameColor(_nameColorHex);
       PreferencesService.saveChatThemePreset(_activePresetId);
+    }
 
-      _debounceTimer?.cancel();
-      if (immediate) {
-        _saveSettings(manual: false);
-      } else {
-        _debounceTimer =
-            Timer(const Duration(milliseconds: 500), () => _saveSettings(manual: false));
-      }
+    _debounceTimer?.cancel();
+    if (immediate) {
+      _saveSettings(manual: false);
+    } else {
+      _debounceTimer =
+          Timer(const Duration(milliseconds: 500), () => _saveSettings(manual: false));
     }
   }
 
@@ -262,11 +275,32 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
         await prefs.setString(_cacheKey, jsonEncode(localData));
         await prefs.setBool('chat_has_custom_${widget.chatId}', true);
 
-        if (NetworkService.isOnline) {
+        final numId = int.tryParse(widget.chatId!);
+        if (numId != null) {
+          await prefs.setString('chat_settings_$numId', jsonEncode(localData));
+          await prefs.setBool('chat_has_custom_$numId', true);
+        }
+
+        int? chatIdInt = numId;
+        if (chatIdInt == null && widget.chatId == 'support') {
           try {
-            final chatIdInt = int.tryParse(widget.chatId!);
-            if (chatIdInt != null) {
-              await chatService.updateChatSettings(chatIdInt, serverPayload);
+            final supId = await chatService.getSupportChatId();
+            if (supId > 0) {
+              chatIdInt = supId;
+              await prefs.setString('chat_settings_$supId', jsonEncode(localData));
+              await prefs.setBool('chat_has_custom_$supId', true);
+            }
+          } catch (_) {}
+        }
+
+        if (NetworkService.isOnline && chatIdInt != null && chatIdInt > 0) {
+          try {
+            await chatService.updateChatSettings(chatIdInt, serverPayload);
+            if (_wallpaperUrl.isNotEmpty &&
+                !_wallpaperUrl.startsWith('data:') &&
+                !_wallpaperUrl.startsWith('file:') &&
+                !_wallpaperUrl.contains(':\\')) {
+              await chatService.updateChatWallpaper(chatIdInt, _wallpaperUrl);
             }
           } catch (e) {
             debugPrint('Server per-chat settings sync failed (ignored): $e');
@@ -362,12 +396,21 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
 
     if (_isPerChat) {
       try {
-        final chatIdInt = int.tryParse(widget.chatId!) ?? 0;
+        int? chatIdInt = int.tryParse(widget.chatId!) ?? 0;
+        if (chatIdInt == 0 && widget.chatId == 'support') {
+          try {
+            chatIdInt = await chatService.getSupportChatId();
+          } catch (_) {}
+        }
         if (chatIdInt != 0 && NetworkService.isOnline) {
           await chatService.resetChatSettings(chatIdInt);
         }
         await prefs.remove(_cacheKey);
         await prefs.remove('chat_has_custom_${widget.chatId}');
+        if (chatIdInt != null && chatIdInt != 0) {
+          await prefs.remove('chat_settings_$chatIdInt');
+          await prefs.remove('chat_has_custom_$chatIdInt');
+        }
       } catch (_) {}
 
       await _loadAllSettings();
@@ -908,7 +951,6 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
-        color: cardBg,
         borderRadius: BorderRadius.circular(16),
         boxShadow: isDark
             ? null
@@ -921,7 +963,7 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
               ],
       ),
       child: Material(
-        color: Colors.transparent,
+        color: cardBg,
         borderRadius: BorderRadius.circular(16),
         clipBehavior: Clip.antiAlias,
         child: Column(
@@ -1009,7 +1051,6 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 14),
       padding: const EdgeInsets.only(top: 14),
       decoration: BoxDecoration(
-        color: cardBg,
         borderRadius: BorderRadius.circular(16),
         boxShadow: isDark
             ? null
@@ -1022,7 +1063,7 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
               ],
       ),
       child: Material(
-        color: Colors.transparent,
+        color: cardBg,
         borderRadius: BorderRadius.circular(16),
         clipBehavior: Clip.antiAlias,
         child: Column(
@@ -1690,7 +1731,7 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
 
                 // Gallery Picker Button
                 Material(
-                  color: Colors.transparent,
+                  color: cardBg,
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: Container(

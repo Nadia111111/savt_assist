@@ -1363,11 +1363,17 @@ Future<void> _deleteSelectedMessages() async {
   Future<void> _loadChatSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final hasCustom = prefs.getBool('chat_has_custom_$_realChatId') ?? false;
+      final hasCustomReal = _realChatId > 0 && (prefs.getBool('chat_has_custom_$_realChatId') ?? false);
+      final hasCustomWidget = prefs.getBool('chat_has_custom_${widget.chatId}') ?? false;
+      final hasCustom = hasCustomReal || hasCustomWidget;
 
       Map<String, dynamic> loaded = {};
       if (hasCustom) {
-        final chatStr = prefs.getString('chat_settings_$_realChatId');
+        String? chatStr;
+        if (hasCustomReal) {
+          chatStr = prefs.getString('chat_settings_$_realChatId');
+        }
+        chatStr ??= prefs.getString('chat_settings_${widget.chatId}');
         if (chatStr != null && chatStr.isNotEmpty) {
           try {
             loaded = Map<String, dynamic>.from(jsonDecode(chatStr));
@@ -1388,6 +1394,7 @@ Future<void> _deleteSelectedMessages() async {
             'font_size': PreferencesService.getFontSize(),
             'name_color': PreferencesService.getNameColor(),
             'chat_list_mode': PreferencesService.getChatListMode(),
+            'wallpaper_url': '',
           };
         }
       }
@@ -1403,9 +1410,10 @@ Future<void> _deleteSelectedMessages() async {
   }
 
   Future<void> _openChatSettings() async {
+    final idToPass = _realChatId > 0 ? '$_realChatId' : widget.chatId;
     await Navigator.pushNamed(
       context,
-      '/chat-settings/${widget.chatId}',
+      '/chat-settings/$idToPass',
     );
     await _loadChatSettings();
   }

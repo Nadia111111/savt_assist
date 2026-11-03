@@ -769,8 +769,13 @@ class _ControlPanelAppState extends State<ControlPanelApp> {
               }
             }
             if (settings.name?.startsWith('/chat-settings/') == true) {
-              final chatIdStr = settings.name!.split('/').last;
-              return _buildRoute(ChatSettingsScreen(chatId: chatIdStr));
+              final uri = Uri.tryParse(settings.name!);
+              final chatIdStr = uri?.pathSegments.isNotEmpty == true
+                  ? uri!.pathSegments.last
+                  : settings.name!.split('/').last;
+              return _buildRoute(ChatSettingsScreen(
+                chatId: (chatIdStr.isNotEmpty && chatIdStr != 'null') ? chatIdStr : null,
+              ));
             }
             if (settings.name == '/chat-settings') {
               return _buildRoute(const ChatSettingsScreen());
