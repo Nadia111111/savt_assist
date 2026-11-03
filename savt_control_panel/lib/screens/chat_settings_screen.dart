@@ -597,76 +597,68 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
       ),
       bottomNavigationBar: SafeArea(
         top: false,
-        child: Align(
-          alignment: Alignment.bottomCenter,
+        child: Center(
+          heightFactor: 1.0,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 500),
-            child: Container(
-              margin: const EdgeInsets.fromLTRB(16, 6, 16, 12),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isSaving ? null : () => _saveSettings(manual: true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: buttonBg,
+                    foregroundColor: Colors.white,
+                    elevation: 3,
+                    shadowColor: Colors.black.withOpacity(isDark ? 0.35 : 0.15),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
-                ],
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              child: ElevatedButton(
-                onPressed: _isSaving ? null : () => _saveSettings(manual: true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: buttonBg,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: _isSaving
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2.5,
-                        ),
-                      )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.check_circle_outline, size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            _isPerChat
-                                ? 'Сохранить для этого чата'
-                                : 'Сохранить для всех чатов',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
+                  child: _isSaving
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.5,
                           ),
-                        ],
-                      ),
+                        )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.check_circle_outline, size: 20),
+                            const SizedBox(width: 8),
+                            Text(
+                              _isPerChat
+                                  ? 'Сохранить для этого чата'
+                                  : 'Сохранить для всех чатов',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
               ),
             ),
           ),
         ),
       ),
       body: Align(
-              alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 600),
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(bottom: 30),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // 1. LIVE CHAT PREVIEW AT TOP ("SAVT помощник")
-                      _buildLivePreviewCard(isDark),
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // 1. LIVE CHAT PREVIEW AT TOP ("SAVT помощник")
+                _buildLivePreviewCard(isDark),
 
                       const SizedBox(height: 12),
 
@@ -751,15 +743,15 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
     final double effectiveRadius = _bubbleRadius;
     final double smallRadius = (effectiveRadius * 0.25).clamp(2.0, 6.0);
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        height: 165,
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: bgColor,
-        ),
-        child: Stack(
+    return Container(
+      height: 165,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
         children: [
           // Background: image or vector doodle pattern (no hearts!)
           Positioned.fill(
@@ -863,8 +855,7 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
           ),
         ],
       ),
-    ),
-  );
+    );
   }
 
   Widget _buildWallpaperPreview({
