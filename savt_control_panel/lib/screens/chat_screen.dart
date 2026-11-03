@@ -2932,7 +2932,9 @@ Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
-                                color: myNameColor,
+                                color: (myNameColor == const Color(0xFF000000) && bubbleColor.computeLuminance() < 0.25)
+                                    ? Colors.white
+                                    : myNameColor,
                               ),
                             ),
                           )

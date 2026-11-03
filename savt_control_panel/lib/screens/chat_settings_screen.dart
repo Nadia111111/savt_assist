@@ -1013,17 +1013,23 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
               trailing: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                 decoration: BoxDecoration(
-                  color: nameColor.withValues(alpha: isDark ? 0.18 : 0.12),
+                  color: nameColor == const Color(0xFF000000) && isDark
+                      ? Colors.white.withValues(alpha: 0.85)
+                      : nameColor.withValues(alpha: isDark ? 0.18 : 0.12),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: nameColor.withValues(alpha: 0.5),
+                    color: nameColor == const Color(0xFF000000) && isDark
+                        ? Colors.white
+                        : nameColor.withValues(alpha: 0.5),
                     width: 1,
                   ),
                 ),
                 child: Text(
                   _userName,
                   style: TextStyle(
-                    color: nameColor,
+                    color: nameColor == const Color(0xFF000000) && isDark
+                        ? Colors.black
+                        : nameColor,
                     fontWeight: FontWeight.w700,
                     fontSize: 13,
                   ),
@@ -1912,17 +1918,23 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
-                              color: currentColor.withValues(alpha: isDark ? 0.2 : 0.15),
+                              color: currentColor == const Color(0xFF000000) && isDark
+                                  ? Colors.white.withValues(alpha: 0.85)
+                                  : currentColor.withValues(alpha: isDark ? 0.2 : 0.15),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: currentColor.withValues(alpha: 0.6),
+                                color: currentColor == const Color(0xFF000000) && isDark
+                                    ? Colors.white
+                                    : currentColor.withValues(alpha: 0.6),
                                 width: 1.2,
                               ),
                             ),
                             child: Text(
                               _userName,
                               style: TextStyle(
-                                color: currentColor,
+                                color: currentColor == const Color(0xFF000000) && isDark
+                                    ? Colors.black
+                                    : currentColor,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 14,
                               ),
@@ -1970,8 +1982,10 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
                                 border: Border.all(
                                   color: isSelected
                                       ? (isDark ? Colors.white : Colors.black87)
-                                      : Colors.transparent,
-                                  width: 3,
+                                      : (item.color == const Color(0xFF000000) && isDark
+                                          ? Colors.white24
+                                          : Colors.transparent),
+                                  width: isSelected ? 3 : 1,
                                 ),
                                 boxShadow: [
                                   BoxShadow(
@@ -1982,8 +1996,13 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
                                 ],
                               ),
                               child: isSelected
-                                  ? const Icon(Icons.check,
-                                      color: Colors.white, size: 22)
+                                  ? Icon(
+                                      Icons.check,
+                                      color: item.color.computeLuminance() > 0.5
+                                          ? Colors.black
+                                          : Colors.white,
+                                      size: 22,
+                                    )
                                   : null,
                             ),
                           );
