@@ -293,14 +293,15 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
           } catch (_) {}
         }
 
-        if (NetworkService.isOnline && chatIdInt != null && chatIdInt > 0) {
+        final targetChatId = chatIdInt;
+        if (NetworkService.isOnline && targetChatId != null && targetChatId > 0) {
           try {
-            await chatService.updateChatSettings(chatIdInt, serverPayload);
+            await chatService.updateChatSettings(targetChatId, serverPayload);
             if (_wallpaperUrl.isNotEmpty &&
                 !_wallpaperUrl.startsWith('data:') &&
                 !_wallpaperUrl.startsWith('file:') &&
                 !_wallpaperUrl.contains(':\\')) {
-              await chatService.updateChatWallpaper(chatIdInt, _wallpaperUrl);
+              await chatService.updateChatWallpaper(targetChatId, _wallpaperUrl);
             }
           } catch (e) {
             debugPrint('Server per-chat settings sync failed (ignored): $e');
@@ -396,7 +397,7 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
 
     if (_isPerChat) {
       try {
-        int? chatIdInt = int.tryParse(widget.chatId!) ?? 0;
+        int chatIdInt = int.tryParse(widget.chatId!) ?? 0;
         if (chatIdInt == 0 && widget.chatId == 'support') {
           try {
             chatIdInt = await chatService.getSupportChatId();
@@ -407,7 +408,7 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
         }
         await prefs.remove(_cacheKey);
         await prefs.remove('chat_has_custom_${widget.chatId}');
-        if (chatIdInt != null && chatIdInt != 0) {
+        if (chatIdInt != 0) {
           await prefs.remove('chat_settings_$chatIdInt');
           await prefs.remove('chat_has_custom_$chatIdInt');
         }
