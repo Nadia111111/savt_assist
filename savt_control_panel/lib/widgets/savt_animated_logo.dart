@@ -18,7 +18,7 @@ class SavtAnimatedLogo extends StatefulWidget {
     super.key,
     this.height = 68,
     this.loop = true,
-    this.duration = const Duration(milliseconds: 4600),
+    this.duration = const Duration(milliseconds: 7600),
     this.onCycleCompleted,
   });
 
@@ -47,7 +47,17 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
       }
     });
 
-    _controller.forward();
+    // Запускаем анимацию строго после того, как первый кадр отрисован движком,
+    // плюс небольшая комфортная пауза в 200 мс, чтобы анимация не "проскакивала"
+    // во время инициализации и компиляции шейдеров на Web
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Future.delayed(const Duration(milliseconds: 200), () {
+        if (mounted && !_controller.isAnimating) {
+          _controller.forward();
+        }
+      });
+    });
   }
 
   @override
@@ -113,9 +123,9 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
                 double currentAvtOpacity = 0.0;
                 bool showAvt = false;
 
-                if (p < 0.18) {
-                  // Фаза 1: S плавно и красиво появляется по центру экрана (0 - 828 мс)
-                  final double t = (p / 0.18).clamp(0.0, 1.0);
+                if (p < 0.15) {
+                  // Фаза 1: S плавно и красиво появляется по центру экрана (0 - 1140 мс)
+                  final double t = (p / 0.15).clamp(0.0, 1.0);
                   final double curvedT = Curves.easeOutBack.transform(t);
 
                   currentSX = sCenterX;
@@ -123,9 +133,9 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
                   currentSOpacity = (t * 2.0).clamp(0.0, 1.0);
                   currentAvtX = sCenterX + sW - avtW;
                   showAvt = false;
-                } else if (p < 0.44) {
-                  // Фаза 2: S плавно отъезжает влево, AVT величаво выплывает из S (828 - 2024 мс, длительность ~1.2 сек)
-                  final double t = ((p - 0.18) / 0.26).clamp(0.0, 1.0);
+                } else if (p < 0.38) {
+                  // Фаза 2: S плавно отъезжает влево, AVT величаво выплывает из S (1140 - 2888 мс, ~1.75 сек)
+                  final double t = ((p - 0.15) / 0.23).clamp(0.0, 1.0);
                   final double curvedT = Curves.easeOutCubic.transform(t);
 
                   currentSX = sCenterX + (sLeftX - sCenterX) * curvedT;
@@ -136,8 +146,8 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
                   final double hiddenAvtX = currentSX + sW - avtW;
                   currentAvtX = hiddenAvtX + (avtTargetX - hiddenAvtX) * curvedT;
                   currentAvtOpacity = (curvedT * 1.5).clamp(0.0, 1.0);
-                } else if (p < 0.74) {
-                  // Фаза 3: Полный логотип зафиксирован и чётко виден на экране (2024 - 3404 мс, комфортные ~1.4 сек!)
+                } else if (p < 0.72) {
+                  // Фаза 3: Полный логотип зафиксирован и чётко виден на экране (2888 - 5472 мс, роскошные ~2.6 сек!)
                   currentSX = sLeftX;
                   currentSScale = 1.0;
                   currentSOpacity = 1.0;
@@ -145,9 +155,9 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
                   showAvt = true;
                   currentAvtX = avtTargetX;
                   currentAvtOpacity = 1.0;
-                } else if (p < 0.92) {
-                  // Фаза 4: AVT плавно ныряет обратно в S, S возвращается в центр (3404 - 4232 мс, ~830 мс)
-                  final double t = ((p - 0.74) / 0.18).clamp(0.0, 1.0);
+                } else if (p < 0.90) {
+                  // Фаза 4: AVT плавно ныряет обратно в S, S возвращается в центр (5472 - 6840 мс, ~1.37 сек)
+                  final double t = ((p - 0.72) / 0.18).clamp(0.0, 1.0);
                   final double curvedT = Curves.easeInOutCubic.transform(t);
 
                   currentSX = sLeftX + (sCenterX - sLeftX) * curvedT;
@@ -159,8 +169,8 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
                   currentAvtX = avtTargetX + (hiddenAvtX - avtTargetX) * curvedT;
                   currentAvtOpacity = (1.0 - curvedT * 1.3).clamp(0.0, 1.0);
                 } else {
-                  // Фаза 5: Буквы уже внутри S, S делает мягкий «вдох» в центре и плавно завершает цикл (4232 - 4600 мс)
-                  final double t = ((p - 0.92) / 0.08).clamp(0.0, 1.0);
+                  // Фаза 5: Буквы уже внутри S, S делает мягкий «вдох» в центре и плавно завершает цикл (6840 - 7600 мс)
+                  final double t = ((p - 0.90) / 0.10).clamp(0.0, 1.0);
                   final double breathe = 1.0 - 0.04 * math.sin(t * math.pi);
 
                   currentSX = sCenterX;

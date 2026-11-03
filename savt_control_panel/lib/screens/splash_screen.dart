@@ -317,7 +317,7 @@ class _SplashScreenState extends State<SplashScreen> {
                       SavtAnimatedLogo(
                         height: 68,
                         loop: true,
-                        duration: const Duration(milliseconds: 4600),
+                        duration: const Duration(milliseconds: 7600),
                         onCycleCompleted: _onLogoCycleCompleted,
                       ),
 
