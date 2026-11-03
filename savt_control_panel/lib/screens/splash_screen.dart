@@ -315,9 +315,11 @@ class _SplashScreenState extends State<SplashScreen> {
                     children: [
                       // Анимированный логотип SAVT с адаптивным центрированием
                       SavtAnimatedLogo(
-                        height: 68,
+                        height: kIsWeb ? 82 : 68,
                         loop: true,
-                        duration: const Duration(milliseconds: 3200),
+                        duration: kIsWeb
+                            ? const Duration(milliseconds: 12000)
+                            : const Duration(milliseconds: 3200),
                         onCycleCompleted: _onLogoCycleCompleted,
                       ),
 

@@ -25,6 +25,15 @@
   </style>
 </head>
 <body>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for (var registration of registrations) {
+          registration.unregister();
+        }
+      });
+    }
+  </script>
   <script src="flutter.js" defer></script>
   <script>
     window.addEventListener('load', function(ev) {

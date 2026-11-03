@@ -12,14 +12,14 @@ import 'savt_logo_data.dart';
 class SavtAnimatedLogo extends StatefulWidget {
   final double height;
   final bool loop;
-  final Duration duration;
+  final Duration? duration;
   final VoidCallback? onCycleCompleted;
 
   const SavtAnimatedLogo({
     super.key,
     this.height = 68,
     this.loop = true,
-    this.duration = const Duration(milliseconds: 3200),
+    this.duration,
     this.onCycleCompleted,
   });
 
@@ -31,12 +31,18 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
 
+  Duration get _effectiveDuration =>
+      widget.duration ??
+      (kIsWeb
+          ? const Duration(milliseconds: 12000)
+          : const Duration(milliseconds: 3200));
+
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: widget.duration,
+      duration: _effectiveDuration,
     );
 
     _controller.addStatusListener((status) {
@@ -64,6 +70,9 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
   @override
   void didUpdateWidget(covariant SavtAnimatedLogo oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.duration != oldWidget.duration) {
+      _controller.duration = _effectiveDuration;
+    }
     if (widget.loop != oldWidget.loop) {
       if (widget.loop && !_controller.isAnimating) {
         _controller.forward(from: 0.0);
@@ -107,6 +116,13 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
         const double sLeftX = 0.0;
         final double avtTargetX = sW + gap;
 
+        // На Web используем 12-секундный комфортный тайминг, на Mobile - исходный 3.2-секундный
+        final bool isWeb = kIsWeb;
+        final double p1 = isWeb ? 0.16 : 0.20;
+        final double p2 = isWeb ? 0.40 : 0.45;
+        final double p3 = isWeb ? 0.72 : 0.70;
+        final double p4 = isWeb ? 0.90 : 0.90;
+
         return Center(
           child: SizedBox(
             width: totalW,
@@ -124,9 +140,9 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
                 double currentAvtOpacity = 0.0;
                 bool showAvt = false;
 
-                if (p < 0.20) {
+                if (p < p1) {
                   // Фаза 1: S появляется ровно по центру экрана
-                  final double t = (p / 0.20).clamp(0.0, 1.0);
+                  final double t = (p / p1).clamp(0.0, 1.0);
                   final double curvedT = Curves.easeOutBack.transform(t);
 
                   currentSX = sCenterX;
@@ -134,9 +150,9 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
                   currentSOpacity = (t * 2.0).clamp(0.0, 1.0);
                   currentAvtX = sCenterX + sW - avtW;
                   showAvt = false;
-                } else if (p < 0.45) {
+                } else if (p < p2) {
                   // Фаза 2: S отъезжает влево, AVT выплывает из S
-                  final double t = ((p - 0.20) / 0.25).clamp(0.0, 1.0);
+                  final double t = ((p - p1) / (p2 - p1)).clamp(0.0, 1.0);
                   final double curvedT = Curves.easeOutCubic.transform(t);
 
                   currentSX = sCenterX + (sLeftX - sCenterX) * curvedT;
@@ -147,7 +163,7 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
                   final double hiddenAvtX = currentSX + sW - avtW;
                   currentAvtX = hiddenAvtX + (avtTargetX - hiddenAvtX) * curvedT;
                   currentAvtOpacity = (curvedT * 1.4).clamp(0.0, 1.0);
-                } else if (p < 0.70) {
+                } else if (p < p3) {
                   // Фаза 3: Полный логотип зафиксирован (отступы слева и справа строго симметричны)
                   currentSX = sLeftX;
                   currentSScale = 1.0;
@@ -156,9 +172,9 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
                   showAvt = true;
                   currentAvtX = avtTargetX;
                   currentAvtOpacity = 1.0;
-                } else if (p < 0.90) {
+                } else if (p < p4) {
                   // Фаза 4: AVT ныряет обратно в S, S возвращается в центр
-                  final double t = ((p - 0.70) / 0.20).clamp(0.0, 1.0);
+                  final double t = ((p - p3) / (p4 - p3)).clamp(0.0, 1.0);
                   final double curvedT = Curves.easeInOutCubic.transform(t);
 
                   currentSX = sLeftX + (sCenterX - sLeftX) * curvedT;
@@ -171,7 +187,7 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
                   currentAvtOpacity = (1.0 - curvedT * 1.3).clamp(0.0, 1.0);
                 } else {
                   // Фаза 5: Буквы уже внутри S, S делает мягкий «вдох» в центре
-                  final double t = ((p - 0.90) / 0.10).clamp(0.0, 1.0);
+                  final double t = ((p - p4) / (1.0 - p4)).clamp(0.0, 1.0);
                   final double breathe = 1.0 - 0.04 * math.sin(t * math.pi);
 
                   currentSX = sCenterX;
@@ -198,19 +214,13 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
                           clipper: _AvtMaskClipper(cutLeft),
                           child: Opacity(
                             opacity: currentAvtOpacity,
-                            child: kIsWeb && SavtLogoData.avtBytes.isNotEmpty
-                                ? Image.memory(
-                                    SavtLogoData.avtBytes,
+                            child: isWeb
+                                ? Image(
+                                    image: SavtLogoData.avtImage,
                                     width: avtW,
                                     height: h,
                                     fit: BoxFit.contain,
                                     gaplessPlayback: true,
-                                    errorBuilder: (_, __, ___) => Image.asset(
-                                      'assets/images/logo_letter_avt.png',
-                                      width: avtW,
-                                      height: h,
-                                      fit: BoxFit.contain,
-                                    ),
                                   )
                                 : Image.asset(
                                     'assets/images/logo_letter_avt.png',
@@ -236,19 +246,13 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
                           alignment: Alignment.center,
                           child: Opacity(
                             opacity: currentSOpacity,
-                            child: kIsWeb && SavtLogoData.sBytes.isNotEmpty
-                                ? Image.memory(
-                                    SavtLogoData.sBytes,
+                            child: isWeb
+                                ? Image(
+                                    image: SavtLogoData.sImage,
                                     width: sW,
                                     height: h,
                                     fit: BoxFit.contain,
                                     gaplessPlayback: true,
-                                    errorBuilder: (_, __, ___) => Image.asset(
-                                      'assets/images/logo_letter_s.png',
-                                      width: sW,
-                                      height: h,
-                                      fit: BoxFit.contain,
-                                    ),
                                   )
                                 : Image.asset(
                                     'assets/images/logo_letter_s.png',
