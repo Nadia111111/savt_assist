@@ -45,7 +45,6 @@ class UploadService {
       final response = await _apiClient.dio.post(
         '/upload/attachment',
         data: formData,
-        options: Options(headers: {'Content-Type': 'multipart/form-data'}),
       );
       // Возвращаем ссылку ровно так, как её выдал сервер (с подписью)
       final raw = response.data;
@@ -69,7 +68,6 @@ class UploadService {
       final response = await _apiClient.dio.post(
         '/upload/attachment',
         data: formData,
-        options: Options(headers: {'Content-Type': 'multipart/form-data'}),
       );
       final raw = response.data;
       if (raw is Map) {
@@ -94,7 +92,6 @@ class UploadService {
       final response = await _apiClient.dio.post(
         '/upload/voice',
         data: formData,
-        options: Options(headers: {'Content-Type': 'multipart/form-data'}),
       );
       // Возвращаем ссылку ровно так, как её выдал сервер (с подписью)
       final raw = response.data;

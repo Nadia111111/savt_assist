@@ -14,6 +14,7 @@ class PreferencesService {
   static final ValueNotifier<String> chatListModeNotifier = ValueNotifier<String>('two_line');
   static final ValueNotifier<String> nameColorNotifier = ValueNotifier<String>('#10B981');
   static final ValueNotifier<String> chatThemeNotifier = ValueNotifier<String>('purple');
+  static final ValueNotifier<String> wallpaperUrlNotifier = ValueNotifier<String>('');
 
   static Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
@@ -22,6 +23,7 @@ class PreferencesService {
     chatListModeNotifier.value = _prefs.getString('chat_list_mode') ?? 'two_line';
     nameColorNotifier.value = _prefs.getString('chat_name_color') ?? '#10B981';
     chatThemeNotifier.value = _prefs.getString('chat_theme_preset') ?? 'purple';
+    wallpaperUrlNotifier.value = _prefs.getString('chat_wallpaper_url') ?? '';
   }
 
   static SharedPreferences get prefs => _prefs;
@@ -114,5 +116,12 @@ class PreferencesService {
   static Future<void> saveChatThemePreset(String preset) async {
     await _prefs.setString('chat_theme_preset', preset);
     chatThemeNotifier.value = preset;
+  }
+
+  // Chat Wallpaper URL
+  static String getWallpaperUrl() => _prefs.getString('chat_wallpaper_url') ?? '';
+  static Future<void> saveWallpaperUrl(String url) async {
+    await _prefs.setString('chat_wallpaper_url', url);
+    wallpaperUrlNotifier.value = url;
   }
 }

@@ -1,12 +1,15 @@
 // lib/screens/chat_settings_screen.dart
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import '../widgets/telegram_doodle_pattern.dart';
 import '../widgets/responsive_layout.dart';
+import '../widgets/auth_image.dart';
 import '../models/chat_theme_presets.dart';
 import '../services/app_theme.dart';
 import '../services/preferences_service.dart';
@@ -125,6 +128,7 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
           _chatListMode = PreferencesService.getChatListMode();
           _nameColorHex = PreferencesService.getNameColor();
           _activePresetId = PreferencesService.getChatThemePreset();
+          _wallpaperUrl = PreferencesService.getWallpaperUrl();
         }
       }
     } catch (e) {
@@ -239,7 +243,12 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
     final Map<String, dynamic> serverPayload = {
       'nick_color': _nameColorHex,
       'font_size': _fontSize.toInt(),
-      'wallpaper_url': _wallpaperUrl.isNotEmpty ? _wallpaperUrl : null,
+      'wallpaper_url': _wallpaperUrl.isNotEmpty &&
+              !_wallpaperUrl.startsWith('data:') &&
+              !_wallpaperUrl.startsWith('file:') &&
+              !_wallpaperUrl.contains(':\\')
+          ? _wallpaperUrl
+          : null,
       'own_bubble_color': _customOwnColor ?? _activePreset.ownBubbleHex,
       'other_bubble_color': _customOtherColor ?? _activePreset.otherBubbleHex,
       'bot_bubble_color': _customBotColor ?? '#2A2938',
@@ -271,6 +280,7 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
         PreferencesService.saveChatListMode(_chatListMode);
         PreferencesService.saveNameColor(_nameColorHex);
         PreferencesService.saveChatThemePreset(_activePresetId);
+        PreferencesService.saveWallpaperUrl(_wallpaperUrl);
 
         // Clear all individual chat override caches so they follow the new global base
         final chatIdsToReset = <int>{};
@@ -400,30 +410,69 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
 
   Future<void> _pickWallpaperFromGallery() async {
     final picker = ImagePicker();
-    final image = await picker.pickImage(source: ImageSource.gallery);
+    final image = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1920,
+      maxHeight: 1920,
+      imageQuality: 85,
+    );
     if (image == null) return;
 
     setState(() => _isLoading = true);
     try {
-      String url;
-      if (kIsWeb) {
-        final bytes = await image.readAsBytes();
-        url = await uploadService.uploadAttachmentBytes(bytes, image.name);
-      } else {
-        url = await uploadService.uploadAttachment(image.path);
+      final bytes = await image.readAsBytes();
+      String url = '';
+
+      // On mobile, save a local copy so it works offline and renders immediately
+      if (!kIsWeb) {
+        try {
+          final appDir = await getApplicationDocumentsDirectory();
+          final localFileName =
+              'wallpaper_${widget.chatId ?? "global"}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+          final localFile = File('${appDir.path}/$localFileName');
+          await localFile.writeAsBytes(bytes);
+          url = localFile.path;
+        } catch (e) {
+          debugPrint('Local wallpaper copy failed: $e');
+        }
       }
-      setState(() {
-        _wallpaperUrl = url;
-      });
-      _onSettingChanged(immediate: true);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Обои успешно установлены'),
-            backgroundColor: Color(0xFF054582),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+
+      // Try uploading to server to get permanent server URL
+      try {
+        String serverUrl = '';
+        if (kIsWeb) {
+          serverUrl = await uploadService.uploadAttachmentBytes(bytes, image.name);
+        } else {
+          serverUrl = await uploadService.uploadAttachment(image.path);
+        }
+        if (serverUrl.isNotEmpty) {
+          url = serverUrl;
+        }
+      } catch (uploadError) {
+        debugPrint('Upload wallpaper to server failed: $uploadError');
+        // If on Web and upload failed, fallback to base64 data URI so user choice is preserved
+        if (kIsWeb && url.isEmpty) {
+          url = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+        }
+      }
+
+      if (url.isNotEmpty) {
+        AuthImage.cacheBytes(url, bytes);
+        setState(() {
+          _wallpaperUrl = url;
+        });
+        _onSettingChanged(immediate: true);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Обои успешно установлены'),
+              backgroundColor: Color(0xFF054582),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } else {
+        throw Exception('Не удалось сохранить изображение');
       }
     } catch (e) {
       if (mounted) {
@@ -691,21 +740,11 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
         children: [
           // Background: image or vector doodle pattern (no hearts!)
           Positioned.fill(
-            child: isCustomImage
-                ? Image.network(
-                    _wallpaperUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => TelegramDoodlePattern(
-                      backgroundColor: bgColor,
-                      doodleColor: isDark ? Colors.white : const Color(0xFF334155),
-                      opacity: isDark ? 0.12 : 0.10,
-                    ),
-                  )
-                : TelegramDoodlePattern(
-                    backgroundColor: bgColor,
-                    doodleColor: isDark ? Colors.white : const Color(0xFF334155),
-                    opacity: isDark ? 0.14 : 0.10,
-                  ),
+            child: _buildWallpaperPreview(
+              wallpaperUrl: _wallpaperUrl,
+              isDark: isDark,
+              bgColor: bgColor,
+            ),
           ),
 
           // Outgoing message bubble aligned to the top-right
@@ -801,6 +840,56 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildWallpaperPreview({
+    required String wallpaperUrl,
+    required bool isDark,
+    required Color bgColor,
+  }) {
+    if (wallpaperUrl.isEmpty) {
+      return TelegramDoodlePattern(
+        backgroundColor: bgColor,
+        doodleColor: isDark ? Colors.white : const Color(0xFF334155),
+        opacity: isDark ? 0.14 : 0.10,
+      );
+    }
+
+    if (wallpaperUrl.startsWith('color:#')) {
+      final color = ChatNameColor.parse(wallpaperUrl.replaceFirst('color:', ''));
+      return Container(color: color);
+    }
+
+    if (wallpaperUrl.startsWith('data:image')) {
+      try {
+        final base64Str = wallpaperUrl.split(',').last;
+        final bytes = base64Decode(base64Str);
+        return Image.memory(bytes, fit: BoxFit.cover);
+      } catch (_) {}
+    }
+
+    if (!kIsWeb &&
+        (wallpaperUrl.startsWith('/') ||
+            wallpaperUrl.startsWith('file://') ||
+            wallpaperUrl.contains(':\\'))) {
+      try {
+        final clean = wallpaperUrl.replaceFirst('file://', '');
+        final file = File(clean);
+        if (file.existsSync()) {
+          return Image.file(file, fit: BoxFit.cover);
+        }
+      } catch (_) {}
+    }
+
+    final cached = AuthImage.getCachedBytes(wallpaperUrl);
+    if (cached != null) {
+      return Image.memory(cached, fit: BoxFit.cover);
+    }
+
+    return AuthImage(
+      url: wallpaperUrl,
+      fit: BoxFit.cover,
     );
   }
 

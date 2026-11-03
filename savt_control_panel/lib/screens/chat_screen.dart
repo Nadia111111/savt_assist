@@ -2467,6 +2467,59 @@ Future<void> _deleteSelectedMessages() async {
     }
   }
 
+  Widget _buildChatWallpaper({
+    required String wallpaperUrl,
+    required bool isDark,
+    required ChatThemePreset activePreset,
+  }) {
+    if (wallpaperUrl.isEmpty) {
+      return TelegramDoodlePattern(
+        backgroundColor: isDark
+            ? activePreset.backgroundColor
+            : activePreset.lightBackgroundColor,
+        doodleColor: isDark ? Colors.white : const Color(0xFF334155),
+        opacity: isDark ? 0.08 : 0.09,
+      );
+    }
+
+    if (wallpaperUrl.startsWith('color:#')) {
+      final color =
+          _parseColor(wallpaperUrl.replaceFirst('color:', '')) ?? Colors.transparent;
+      return Container(color: color);
+    }
+
+    if (wallpaperUrl.startsWith('data:image')) {
+      try {
+        final base64Str = wallpaperUrl.split(',').last;
+        final bytes = base64Decode(base64Str);
+        return Image.memory(bytes, fit: BoxFit.cover);
+      } catch (_) {}
+    }
+
+    if (!kIsWeb &&
+        (wallpaperUrl.startsWith('/') ||
+            wallpaperUrl.startsWith('file://') ||
+            wallpaperUrl.contains(':\\'))) {
+      try {
+        final clean = wallpaperUrl.replaceFirst('file://', '');
+        final file = File(clean);
+        if (file.existsSync()) {
+          return Image.file(file, fit: BoxFit.cover);
+        }
+      } catch (_) {}
+    }
+
+    final cached = AuthImage.getCachedBytes(wallpaperUrl);
+    if (cached != null) {
+      return Image.memory(cached, fit: BoxFit.cover);
+    }
+
+    return AuthImage(
+      url: wallpaperUrl,
+      fit: BoxFit.cover,
+    );
+  }
+
 Widget _buildAppBarHeader() {
      if (_isSearching) {
        return Row(
@@ -2613,43 +2666,25 @@ Widget _buildAppBarHeader() {
             final messageMaxWidth = isDesktop ? 480.0 : MediaQuery.of(context).size.width * 0.8;
             final horizontalPadding = isDesktop ? 24.0 : 16.0;
 
-            final wallpaperUrl = _chatSettings['wallpaper_url'];
+            final wallpaperUrl = _chatSettings['wallpaper_url']?.toString() ?? '';
             final presetId = _chatSettings['theme_preset']?.toString() ??
                 PreferencesService.getChatThemePreset();
             final activePreset = ChatThemePreset.getById(presetId);
+            final isDark = theme.brightness == Brightness.dark;
+            final isCustomImage = wallpaperUrl.isNotEmpty && !wallpaperUrl.startsWith('color:#');
 
             return Stack(
               children: [
-                if (wallpaperUrl != null && wallpaperUrl.toString().isNotEmpty)
+                Positioned.fill(
+                  child: _buildChatWallpaper(
+                    wallpaperUrl: wallpaperUrl,
+                    isDark: isDark,
+                    activePreset: activePreset,
+                  ),
+                ),
+                if (isCustomImage && isDark)
                   Positioned.fill(
-                    child: wallpaperUrl.toString().startsWith('color:#')
-                        ? Container(
-                            color: _parseColor(wallpaperUrl.toString().replaceFirst('color:', '')) ?? Colors.transparent,
-                          )
-                        : Opacity(
-                            opacity: 0.25,
-                            child: Image.network(
-                              wallpaperUrl.toString().startsWith('http')
-                                  ? wallpaperUrl.toString()
-                                  : '${ApiClient.baseUrl}${wallpaperUrl.toString().startsWith('/') ? '' : '/'}${wallpaperUrl.toString()}',
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return const SizedBox.shrink();
-                              },
-                            ),
-                          ),
-                  )
-                else
-                  Positioned.fill(
-                    child: TelegramDoodlePattern(
-                      backgroundColor: theme.brightness == Brightness.dark
-                          ? activePreset.backgroundColor
-                          : activePreset.lightBackgroundColor,
-                      doodleColor: theme.brightness == Brightness.dark
-                          ? Colors.white
-                          : const Color(0xFF334155),
-                      opacity: theme.brightness == Brightness.dark ? 0.08 : 0.09,
-                    ),
+                    child: Container(color: Colors.black.withValues(alpha: 0.20)),
                   ),
                 Column(
                   children: [

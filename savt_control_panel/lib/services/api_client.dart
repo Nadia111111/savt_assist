@@ -82,6 +82,10 @@ class ApiClient {
           options.headers.remove('Authorization');
         }
 
+        if (options.data is FormData) {
+          options.headers.remove('Content-Type');
+        }
+
         debugPrint('🔵 [API] ${options.method} ${options.uri}');
         if (options.data != null) {
           debugPrint('📦 [API] Data: ${options.data}');
