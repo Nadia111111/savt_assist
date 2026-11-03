@@ -859,7 +859,8 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 
   Widget _buildWallpaperPreview({
