@@ -65,6 +65,7 @@ class ResponsiveContainer extends StatelessWidget {
     if (isDesktop) {
       // На десктопе центрируем с ограничением ширины
       return Center(
+        heightFactor: fullHeight ? null : 1.0,
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxWidth),
           child: content,

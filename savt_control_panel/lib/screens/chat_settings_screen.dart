@@ -512,47 +512,61 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
         ],
       ),
       bottomNavigationBar: Container(
-        color: cardBg,
+        decoration: BoxDecoration(
+          color: cardBg,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
+              blurRadius: 10,
+              offset: const Offset(0, -3),
+            ),
+          ],
+        ),
         child: SafeArea(
-          child: ResponsiveContainer(
-            maxWidth: 600,
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-            child: ElevatedButton(
-              onPressed: _isSaving ? null : () => _saveSettings(manual: true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: buttonBg,
-                foregroundColor: Colors.white,
-                elevation: 2,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+          child: Center(
+            heightFactor: 1.0,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 600),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+                child: ElevatedButton(
+                  onPressed: _isSaving ? null : () => _saveSettings(manual: true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: buttonBg,
+                    foregroundColor: Colors.white,
+                    elevation: 2,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: _isSaving
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.5,
+                          ),
+                        )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.check_circle_outline, size: 20),
+                            const SizedBox(width: 8),
+                            Text(
+                              _isPerChat
+                                  ? 'Сохранить для этого чата'
+                                  : 'Сохранить для всех чатов',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
                 ),
               ),
-              child: _isSaving
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2.5,
-                      ),
-                    )
-                  : Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.check_circle_outline, size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          _isPerChat
-                              ? 'Сохранить для этого чата'
-                              : 'Сохранить для всех чатов',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
             ),
           ),
         ),
@@ -561,75 +575,78 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
           ? Center(
               child: CircularProgressIndicator(color: brandPrimary),
             )
-          : ResponsiveContainer(
-              maxWidth: 600,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.only(bottom: 30),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                  // 1. LIVE CHAT PREVIEW AT TOP ("SAVT помощник")
-                  _buildLivePreviewCard(isDark),
+          : Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 600),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(bottom: 30),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // 1. LIVE CHAT PREVIEW AT TOP ("SAVT помощник")
+                      _buildLivePreviewCard(isDark),
 
-                  const SizedBox(height: 12),
+                      const SizedBox(height: 12),
 
-                  // 2. WALLPAPER & NAME COLOR CARD
-                  _buildWallpaperAndNameCard(
-                    isDark: isDark,
-                    cardBg: cardBg,
-                    dividerColor: dividerColor,
-                    textPrimary: textPrimary,
-                    accentColor: brandAccent,
+                      // 2. WALLPAPER & NAME COLOR CARD
+                      _buildWallpaperAndNameCard(
+                        isDark: isDark,
+                        cardBg: cardBg,
+                        dividerColor: dividerColor,
+                        textPrimary: textPrimary,
+                        accentColor: brandAccent,
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // 3. COLOR THEME PRESETS CAROUSEL CARD (No stickers!)
+                      _buildThemePresetsCard(
+                        isDark: isDark,
+                        cardBg: cardBg,
+                        dividerColor: dividerColor,
+                        textPrimary: textPrimary,
+                        accentColor: brandAccent,
+                        selectionBorderColor: brandAccent,
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // 4. FONT SIZE SLIDER CARD (NEW!)
+                      _buildFontSizeSliderCard(
+                        isDark: isDark,
+                        cardBg: cardBg,
+                        textPrimary: textPrimary,
+                        accentColor: brandAccent,
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // 5. BUBBLE CORNER RADIUS SLIDER CARD
+                      _buildBubbleCornerRadiusCard(
+                        isDark: isDark,
+                        cardBg: cardBg,
+                        textPrimary: textPrimary,
+                        accentColor: brandAccent,
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // 6. CHAT LIST MODE CARD (Two-line / Three-line)
+                      _buildChatListModeCard(
+                        isDark: isDark,
+                        cardBg: cardBg,
+                        cardInnerBg: cardInnerBg,
+                        textPrimary: textPrimary,
+                        textSecondary: textSecondary,
+                        accentColor: brandAccent,
+                        selectionBorderColor: brandAccent,
+                      ),
+                    ],
                   ),
-
-                  const SizedBox(height: 12),
-
-                  // 3. COLOR THEME PRESETS CAROUSEL CARD (No stickers!)
-                  _buildThemePresetsCard(
-                    isDark: isDark,
-                    cardBg: cardBg,
-                    dividerColor: dividerColor,
-                    textPrimary: textPrimary,
-                    accentColor: brandAccent,
-                    selectionBorderColor: brandAccent,
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // 4. FONT SIZE SLIDER CARD (NEW!)
-                  _buildFontSizeSliderCard(
-                    isDark: isDark,
-                    cardBg: cardBg,
-                    textPrimary: textPrimary,
-                    accentColor: brandAccent,
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // 5. BUBBLE CORNER RADIUS SLIDER CARD
-                  _buildBubbleCornerRadiusCard(
-                    isDark: isDark,
-                    cardBg: cardBg,
-                    textPrimary: textPrimary,
-                    accentColor: brandAccent,
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // 6. CHAT LIST MODE CARD (Two-line / Three-line)
-                  _buildChatListModeCard(
-                    isDark: isDark,
-                    cardBg: cardBg,
-                    cardInnerBg: cardInnerBg,
-                    textPrimary: textPrimary,
-                    textSecondary: textSecondary,
-                    accentColor: brandAccent,
-                    selectionBorderColor: brandAccent,
-                  ),
-                ],
+                ),
               ),
             ),
-          ),
     );
   }
 
@@ -802,71 +819,76 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
                 ),
               ],
       ),
-      child: Column(
-        children: [
-          ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-            leading: Icon(
-              Icons.wallpaper_rounded,
-              color: accentColor,
-              size: 24,
-            ),
-            title: Text(
-              'Изменить обои',
-              style: TextStyle(
-                color: textPrimary,
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+              leading: Icon(
+                Icons.wallpaper_rounded,
+                color: accentColor,
+                size: 24,
               ),
-            ),
-            trailing: Icon(
-              Icons.chevron_right,
-              color: isDark ? Colors.white38 : Colors.black38,
-              size: 20,
-            ),
-            onTap: () => _showWallpaperBottomSheet(context, isDark, cardBg, textPrimary, accentColor, dividerColor),
-          ),
-          Divider(height: 1, indent: 56, color: dividerColor),
-
-          ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-            leading: Icon(
-              Icons.palette_outlined,
-              color: accentColor,
-              size: 24,
-            ),
-            title: Text(
-              'Изменить цвет имени',
-              style: TextStyle(
-                color: textPrimary,
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            trailing: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-              decoration: BoxDecoration(
-                color: nameColor.withValues(alpha: isDark ? 0.18 : 0.12),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: nameColor.withValues(alpha: 0.5),
-                  width: 1,
-                ),
-              ),
-              child: Text(
-                _userName,
+              title: Text(
+                'Изменить обои',
                 style: TextStyle(
-                  color: nameColor,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
+                  color: textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
+              trailing: Icon(
+                Icons.chevron_right,
+                color: isDark ? Colors.white38 : Colors.black38,
+                size: 20,
+              ),
+              onTap: () => _showWallpaperBottomSheet(context, isDark, cardBg, textPrimary, accentColor, dividerColor),
             ),
-            onTap: () => _showNameColorBottomSheet(context, isDark, cardBg, textPrimary, accentColor, dividerColor),
-          ),
-        ],
+            Divider(height: 1, indent: 56, color: dividerColor),
+
+            ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+              leading: Icon(
+                Icons.palette_outlined,
+                color: accentColor,
+                size: 24,
+              ),
+              title: Text(
+                'Изменить цвет имени',
+                style: TextStyle(
+                  color: textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                decoration: BoxDecoration(
+                  color: nameColor.withValues(alpha: isDark ? 0.18 : 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: nameColor.withValues(alpha: 0.5),
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  _userName,
+                  style: TextStyle(
+                    color: nameColor,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              onTap: () => _showNameColorBottomSheet(context, isDark, cardBg, textPrimary, accentColor, dividerColor),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -898,197 +920,202 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
                 ),
               ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              'Цветовая тема',
-              style: TextStyle(
-                color: accentColor,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                'Цветовая тема',
+                style: TextStyle(
+                  color: accentColor,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 12),
+            const SizedBox(height: 12),
 
-          // Horizontal Carousel of Presets (clean without stickers)
-          SizedBox(
-            height: 125,
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              scrollDirection: Axis.horizontal,
-              itemCount: ChatThemePreset.presets.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
-              itemBuilder: (context, index) {
-                final preset = ChatThemePreset.presets[index];
-                final isSelected = _activePresetId == preset.id;
-                final Color presetBg = isDark ? preset.backgroundColor : preset.lightBackgroundColor;
+            // Horizontal Carousel of Presets (clean without stickers)
+            SizedBox(
+              height: 125,
+              child: ListView.separated(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                scrollDirection: Axis.horizontal,
+                itemCount: ChatThemePreset.presets.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (context, index) {
+                  final preset = ChatThemePreset.presets[index];
+                  final isSelected = _activePresetId == preset.id;
+                  final Color presetBg = isDark ? preset.backgroundColor : preset.lightBackgroundColor;
 
-                return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _activePresetId = preset.id;
-                      _customOwnColor = null;
-                      _customOtherColor = null;
-                    });
-                    _onSettingChanged();
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: 76,
-                    height: 122,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: isSelected ? selectionBorderColor : (isDark ? Colors.transparent : Colors.black12),
-                        width: isSelected ? 2.5 : 1.0,
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _activePresetId = preset.id;
+                        _customOwnColor = null;
+                        _customOtherColor = null;
+                      });
+                      _onSettingChanged();
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: 76,
+                      height: 122,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isSelected ? selectionBorderColor : (isDark ? Colors.transparent : Colors.black12),
+                          width: isSelected ? 2.5 : 1.0,
+                        ),
                       ),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(13),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          // Doodle Pattern Background (no hearts)
-                          TelegramDoodlePattern(
-                            backgroundColor: presetBg,
-                            doodleColor: isDark ? Colors.white : const Color(0xFF334155),
-                            opacity: isDark ? 0.12 : 0.10,
-                          ),
-
-                          // Mock message bubbles without stickers
-                          Padding(
-                            padding: const EdgeInsets.all(7.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                const SizedBox(height: 4),
-
-                                // Outgoing bubble pill
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: Container(
-                                    width: 50,
-                                    height: 18,
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        colors: preset.ownBubbleGradient,
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                      ),
-                                      borderRadius: BorderRadius.circular(9),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-
-                                // Incoming bubble pill
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: Container(
-                                    width: 44,
-                                    height: 16,
-                                    decoration: BoxDecoration(
-                                      color: isDark
-                                          ? const Color(0xFF26252E).withValues(alpha: 0.9)
-                                          : const Color(0xFFE2E8F0),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                ),
-
-                                const Spacer(),
-
-                                // Clean indicator / checkmark at bottom (NO EMOJI STICKERS)
-                                Center(
-                                  child: isSelected
-                                      ? Container(
-                                          padding: const EdgeInsets.all(3),
-                                          decoration: BoxDecoration(
-                                            color: accentColor,
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: const Icon(
-                                            Icons.check,
-                                            size: 13,
-                                            color: Colors.white,
-                                          ),
-                                        )
-                                      : const SizedBox(height: 19),
-                                ),
-                                const SizedBox(height: 5),
-                              ],
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(13),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            // Doodle Pattern Background (no hearts)
+                            TelegramDoodlePattern(
+                              backgroundColor: presetBg,
+                              doodleColor: isDark ? Colors.white : const Color(0xFF334155),
+                              opacity: isDark ? 0.12 : 0.10,
                             ),
-                          ),
-                        ],
+
+                            // Mock message bubbles without stickers
+                            Padding(
+                              padding: const EdgeInsets.all(7.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  const SizedBox(height: 4),
+
+                                  // Outgoing bubble pill
+                                  Align(
+                                    alignment: Alignment.centerRight,
+                                    child: Container(
+                                      width: 50,
+                                      height: 18,
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: preset.ownBubbleGradient,
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                        ),
+                                        borderRadius: BorderRadius.circular(9),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+
+                                  // Incoming bubble pill
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Container(
+                                      width: 44,
+                                      height: 16,
+                                      decoration: BoxDecoration(
+                                        color: isDark
+                                            ? const Color(0xFF26252E).withValues(alpha: 0.9)
+                                            : const Color(0xFFE2E8F0),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                  ),
+
+                                  const Spacer(),
+
+                                  // Clean indicator / checkmark at bottom (NO EMOJI STICKERS)
+                                  Center(
+                                    child: isSelected
+                                        ? Container(
+                                            padding: const EdgeInsets.all(3),
+                                            decoration: BoxDecoration(
+                                              color: accentColor,
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: const Icon(
+                                              Icons.check,
+                                              size: 13,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : const SizedBox(height: 19),
+                                  ),
+                                  const SizedBox(height: 5),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                );
+                  );
+                },
+              ),
+            ),
+
+            const SizedBox(height: 12),
+            Divider(height: 1, indent: 16, color: dividerColor),
+
+            // Toggle Day/Night Theme Tile
+            ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+              leading: Icon(
+                isDark ? Icons.wb_sunny_outlined : Icons.dark_mode_outlined,
+                color: accentColor,
+                size: 24,
+              ),
+              title: Text(
+                isDark
+                    ? 'Переключить на дневную тему'
+                    : 'Переключить на ночную тему',
+                style: TextStyle(
+                  color: textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              onTap: () {
+                final newMode = isDark ? ThemeMode.light : ThemeMode.dark;
+                AppTheme.themeNotifier.value = newMode;
+                AppTheme.saveTheme(newMode);
+                PreferencesService.saveThemeChoice(!isDark);
               },
             ),
-          ),
 
-          const SizedBox(height: 12),
-          Divider(height: 1, indent: 16, color: dividerColor),
+            Divider(height: 1, indent: 56, color: dividerColor),
 
-          // Toggle Day/Night Theme Tile
-          ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-            leading: Icon(
-              isDark ? Icons.wb_sunny_outlined : Icons.dark_mode_outlined,
-              color: accentColor,
-              size: 24,
-            ),
-            title: Text(
-              isDark
-                  ? 'Переключить на дневную тему'
-                  : 'Переключить на ночную тему',
-              style: TextStyle(
-                color: textPrimary,
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
+            // Theme Settings Tile
+            ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+              leading: Icon(
+                Icons.brush_outlined,
+                color: accentColor,
+                size: 24,
               ),
-            ),
-            onTap: () {
-              final newMode = isDark ? ThemeMode.light : ThemeMode.dark;
-              AppTheme.themeNotifier.value = newMode;
-              AppTheme.saveTheme(newMode);
-              PreferencesService.saveThemeChoice(!isDark);
-            },
-          ),
-
-          Divider(height: 1, indent: 56, color: dividerColor),
-
-          // Theme Settings Tile
-          ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-            leading: Icon(
-              Icons.brush_outlined,
-              color: accentColor,
-              size: 24,
-            ),
-            title: Text(
-              'Настройки темы',
-              style: TextStyle(
-                color: textPrimary,
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
+              title: Text(
+                'Настройки темы',
+                style: TextStyle(
+                  color: textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
+              trailing: Icon(
+                Icons.chevron_right,
+                color: isDark ? Colors.white38 : Colors.black38,
+                size: 20,
+              ),
+              onTap: () => _showThemeSettingsBottomSheet(context, isDark, cardBg, textPrimary, accentColor, dividerColor),
             ),
-            trailing: Icon(
-              Icons.chevron_right,
-              color: isDark ? Colors.white38 : Colors.black38,
-              size: 20,
-            ),
-            onTap: () => _showThemeSettingsBottomSheet(context, isDark, cardBg, textPrimary, accentColor, dividerColor),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1561,24 +1588,27 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
                 const SizedBox(height: 16),
 
                 // Gallery Picker Button
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: accentColor.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(10),
+                Material(
+                  color: Colors.transparent,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: accentColor.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(Icons.photo_library_outlined, color: accentColor),
                     ),
-                    child: Icon(Icons.photo_library_outlined, color: accentColor),
+                    title: Text('Выбрать из галереи',
+                        style: TextStyle(color: textPrimary, fontSize: 15)),
+                    trailing: Icon(Icons.chevron_right,
+                        color: isDark ? Colors.white38 : Colors.black38, size: 20),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _pickWallpaperFromGallery();
+                    },
                   ),
-                  title: Text('Выбрать из галереи',
-                      style: TextStyle(color: textPrimary, fontSize: 15)),
-                  trailing: Icon(Icons.chevron_right,
-                      color: isDark ? Colors.white38 : Colors.black38, size: 20),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _pickWallpaperFromGallery();
-                  },
                 ),
 
                 Divider(color: dividerColor, height: 16),
