@@ -44,6 +44,15 @@ class _SplashScreenState extends State<SplashScreen> {
     _initializeApp();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    try {
+      precacheImage(const AssetImage('assets/images/logo_letter_s.png'), context);
+      precacheImage(const AssetImage('assets/images/logo_letter_avt.png'), context);
+    } catch (_) {}
+  }
+
   void _onLogoCycleCompleted() {
     // Срабатывает в конце каждого цикла, когда буквы AVT уже полностью нырнули обратно в букву S.
     // Если проверка авторизации/инициализация готова, выполняем переход в приложение!
@@ -308,7 +317,7 @@ class _SplashScreenState extends State<SplashScreen> {
                       SavtAnimatedLogo(
                         height: 68,
                         loop: true,
-                        duration: const Duration(milliseconds: 3200),
+                        duration: const Duration(milliseconds: 4600),
                         onCycleCompleted: _onLogoCycleCompleted,
                       ),
 

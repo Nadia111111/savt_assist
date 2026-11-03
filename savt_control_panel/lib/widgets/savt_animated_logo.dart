@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'savt_logo_data.dart';
 
 /// Анимированный логотип SAVT с адаптивным масштабированием и идеальным центрированием:
 /// 1. Буква S появляется по центру с упругим масштабированием (scale 0.35 -> 1.0).
@@ -17,7 +18,7 @@ class SavtAnimatedLogo extends StatefulWidget {
     super.key,
     this.height = 68,
     this.loop = true,
-    this.duration = const Duration(milliseconds: 3200),
+    this.duration = const Duration(milliseconds: 4600),
     this.onCycleCompleted,
   });
 
@@ -112,9 +113,9 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
                 double currentAvtOpacity = 0.0;
                 bool showAvt = false;
 
-                if (p < 0.20) {
-                  // Фаза 1: S появляется ровно по центру экрана
-                  final double t = (p / 0.20).clamp(0.0, 1.0);
+                if (p < 0.18) {
+                  // Фаза 1: S плавно и красиво появляется по центру экрана (0 - 828 мс)
+                  final double t = (p / 0.18).clamp(0.0, 1.0);
                   final double curvedT = Curves.easeOutBack.transform(t);
 
                   currentSX = sCenterX;
@@ -122,9 +123,9 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
                   currentSOpacity = (t * 2.0).clamp(0.0, 1.0);
                   currentAvtX = sCenterX + sW - avtW;
                   showAvt = false;
-                } else if (p < 0.45) {
-                  // Фаза 2: S отъезжает влево, AVT выплывает из S
-                  final double t = ((p - 0.20) / 0.25).clamp(0.0, 1.0);
+                } else if (p < 0.44) {
+                  // Фаза 2: S плавно отъезжает влево, AVT величаво выплывает из S (828 - 2024 мс, длительность ~1.2 сек)
+                  final double t = ((p - 0.18) / 0.26).clamp(0.0, 1.0);
                   final double curvedT = Curves.easeOutCubic.transform(t);
 
                   currentSX = sCenterX + (sLeftX - sCenterX) * curvedT;
@@ -134,9 +135,9 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
                   showAvt = true;
                   final double hiddenAvtX = currentSX + sW - avtW;
                   currentAvtX = hiddenAvtX + (avtTargetX - hiddenAvtX) * curvedT;
-                  currentAvtOpacity = (curvedT * 1.4).clamp(0.0, 1.0);
-                } else if (p < 0.70) {
-                  // Фаза 3: Полный логотип зафиксирован (отступы слева и справа строго симметричны)
+                  currentAvtOpacity = (curvedT * 1.5).clamp(0.0, 1.0);
+                } else if (p < 0.74) {
+                  // Фаза 3: Полный логотип зафиксирован и чётко виден на экране (2024 - 3404 мс, комфортные ~1.4 сек!)
                   currentSX = sLeftX;
                   currentSScale = 1.0;
                   currentSOpacity = 1.0;
@@ -144,9 +145,9 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
                   showAvt = true;
                   currentAvtX = avtTargetX;
                   currentAvtOpacity = 1.0;
-                } else if (p < 0.90) {
-                  // Фаза 4: AVT ныряет обратно в S, S возвращается в центр
-                  final double t = ((p - 0.70) / 0.20).clamp(0.0, 1.0);
+                } else if (p < 0.92) {
+                  // Фаза 4: AVT плавно ныряет обратно в S, S возвращается в центр (3404 - 4232 мс, ~830 мс)
+                  final double t = ((p - 0.74) / 0.18).clamp(0.0, 1.0);
                   final double curvedT = Curves.easeInOutCubic.transform(t);
 
                   currentSX = sLeftX + (sCenterX - sLeftX) * curvedT;
@@ -158,8 +159,8 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
                   currentAvtX = avtTargetX + (hiddenAvtX - avtTargetX) * curvedT;
                   currentAvtOpacity = (1.0 - curvedT * 1.3).clamp(0.0, 1.0);
                 } else {
-                  // Фаза 5: Буквы уже внутри S, S делает мягкий «вдох» в центре
-                  final double t = ((p - 0.90) / 0.10).clamp(0.0, 1.0);
+                  // Фаза 5: Буквы уже внутри S, S делает мягкий «вдох» в центре и плавно завершает цикл (4232 - 4600 мс)
+                  final double t = ((p - 0.92) / 0.08).clamp(0.0, 1.0);
                   final double breathe = 1.0 - 0.04 * math.sin(t * math.pi);
 
                   currentSX = sCenterX;
@@ -186,12 +187,18 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
                           clipper: _AvtMaskClipper(cutLeft),
                           child: Opacity(
                             opacity: currentAvtOpacity,
-                            child: Image.asset(
-                              'assets/images/logo_letter_avt.png',
+                            child: Image.memory(
+                              SavtLogoData.avtBytes,
                               width: avtW,
                               height: h,
                               fit: BoxFit.contain,
-                              errorBuilder: (_, __, ___) => const SizedBox(),
+                              gaplessPlayback: true,
+                              errorBuilder: (_, __, ___) => Image.asset(
+                                'assets/images/logo_letter_avt.png',
+                                width: avtW,
+                                height: h,
+                                fit: BoxFit.contain,
+                              ),
                             ),
                           ),
                         ),
@@ -209,12 +216,18 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
                           alignment: Alignment.center,
                           child: Opacity(
                             opacity: currentSOpacity,
-                            child: Image.asset(
-                              'assets/images/logo_letter_s.png',
+                            child: Image.memory(
+                              SavtLogoData.sBytes,
                               width: sW,
                               height: h,
                               fit: BoxFit.contain,
-                              errorBuilder: (_, __, ___) => const SizedBox(),
+                              gaplessPlayback: true,
+                              errorBuilder: (_, __, ___) => Image.asset(
+                                'assets/images/logo_letter_s.png',
+                                width: sW,
+                                height: h,
+                                fit: BoxFit.contain,
+                              ),
                             ),
                           ),
                         ),
