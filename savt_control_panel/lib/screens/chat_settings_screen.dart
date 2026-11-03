@@ -14,6 +14,7 @@ import '../services/network_service.dart';
 import '../services/auth_service.dart';
 import '../services/upload_service.dart';
 import '../services/offline_service.dart';
+import '../widgets/bottom_nav_bar.dart';
 import '../main.dart';
 
 class ChatSettingsScreen extends StatefulWidget {
@@ -46,11 +47,21 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        AppNavState.instance.pushConfig(
+          id: this,
+          showBottomBar: true,
+          currentIndex: 2,
+        );
+      }
+    });
     _loadAllSettings();
   }
 
   @override
   void dispose() {
+    AppNavState.instance.removeConfig(this);
     _debounceTimer?.cancel();
     super.dispose();
   }
@@ -523,19 +534,20 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
           ],
         ),
         child: SafeArea(
+          bottom: false,
           child: Center(
             heightFactor: 1.0,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 600),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                 child: ElevatedButton(
                   onPressed: _isSaving ? null : () => _saveSettings(manual: true),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: buttonBg,
                     foregroundColor: Colors.white,
                     elevation: 2,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),

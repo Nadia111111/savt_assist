@@ -471,7 +471,6 @@ class AppRouteObserver extends NavigatorObserver {
         clean.startsWith('/forgot-password') ||
         clean.startsWith('/register-request') ||
         clean.startsWith('/password-reset-request') ||
-        clean.startsWith('/chat-settings') ||
         _excludedRoutes.contains(clean);
   }
 

@@ -198,7 +198,7 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
                           clipper: _AvtMaskClipper(cutLeft),
                           child: Opacity(
                             opacity: currentAvtOpacity,
-                            child: kIsWeb
+                            child: kIsWeb && SavtLogoData.avtBytes.isNotEmpty
                                 ? Image.memory(
                                     SavtLogoData.avtBytes,
                                     width: avtW,
@@ -236,7 +236,7 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
                           alignment: Alignment.center,
                           child: Opacity(
                             opacity: currentSOpacity,
-                            child: kIsWeb
+                            child: kIsWeb && SavtLogoData.sBytes.isNotEmpty
                                 ? Image.memory(
                                     SavtLogoData.sBytes,
                                     width: sW,
