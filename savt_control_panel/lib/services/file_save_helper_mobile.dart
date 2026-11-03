@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:gal/gal.dart';
+import '../main.dart'; // uploadService
 
 class FileSaveHelperPlatform {
   static const MethodChannel _downloadsChannel = MethodChannel('com.savt.savt_control_panel/downloads');
@@ -160,5 +161,18 @@ class FileSaveHelperPlatform {
     if (lower.endsWith('.webp')) return 'image/webp';
     if (lower.endsWith('.mp4')) return 'video/mp4';
     return 'application/octet-stream';
+  }
+
+  static Future<String> saveUrl({
+    required BuildContext context,
+    required String url,
+    required String fileName,
+  }) async {
+    final bytes = await uploadService.downloadFile(url);
+    return saveFile(
+      context: context,
+      bytes: bytes,
+      fileName: fileName,
+    );
   }
 }

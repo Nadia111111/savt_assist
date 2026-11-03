@@ -1351,6 +1351,7 @@ Future<void> _deleteSelectedMessages() async {
           chatTitle: _chatTitle,
           messages: _messages,
           onSendEdited: (path) => _sendAttachment(path),
+          onSendEditedBytes: (bytes, name) => _sendAttachmentBytes(bytes, name),
           onNavigateToMessage: (msgId) {
             Navigator.pop(context);
             _scrollToMessage(msgId);
@@ -1628,7 +1629,7 @@ Future<void> _deleteSelectedMessages() async {
 
   Future<void> _downloadFile(ChatAttachment att) async {
     // 1. Если файл уже скачан локально - сразу открываем без повторного скачивания
-    if (att.localPath != null && await File(att.localPath!).exists()) {
+    if (!kIsWeb && att.localPath != null && await File(att.localPath!).exists()) {
       final res = await OpenFile.open(att.localPath!);
       if (res.type != ResultType.done && mounted) {
         _showError('Не удалось открыть файл: ${res.message}');
@@ -1636,13 +1637,15 @@ Future<void> _deleteSelectedMessages() async {
       return;
     }
 
-    final existingPath = await FileSaveHelper.getLocalFilePath(att.fileName);
-    if (existingPath != null && await File(existingPath).exists()) {
-      final res = await OpenFile.open(existingPath);
-      if (res.type != ResultType.done && mounted) {
-        _showError('Не удалось открыть файл: ${res.message}');
+    if (!kIsWeb) {
+      final existingPath = await FileSaveHelper.getLocalFilePath(att.fileName);
+      if (existingPath != null && await File(existingPath).exists()) {
+        final res = await OpenFile.open(existingPath);
+        if (res.type != ResultType.done && mounted) {
+          _showError('Не удалось открыть файл: ${res.message}');
+        }
+        return;
       }
-      return;
     }
 
     if (!mounted) return;
@@ -1652,14 +1655,33 @@ Future<void> _deleteSelectedMessages() async {
     showDownloadProgressDialog(context, att.fileName, progressController.stream);
 
     try {
-      final bytes = await uploadService.downloadFile(
-        att.fileUrl!,
-        onProgress: (received, total) {
-          if (total > 0) {
-            progressController.add(received / total);
-          }
-        },
-      );
+      List<int>? bytes;
+      try {
+        bytes = await uploadService.downloadFile(
+          att.fileUrl!,
+          onProgress: (received, total) {
+            if (total > 0) {
+              progressController.add(received / total);
+            }
+          },
+        );
+      } catch (downloadErr) {
+        debugPrint('Failed to download attachment bytes: $downloadErr');
+        if (kIsWeb) {
+          if (mounted) Navigator.pop(context); // закрываем диалог загрузки
+          final fullUrl = att.fileUrl!.startsWith('http')
+              ? att.fileUrl!
+              : '${ApiClient.baseUrl}${att.fileUrl!.startsWith('/') ? '' : '/'}${att.fileUrl!}';
+          await FileSaveHelper.saveUrl(
+            context: context,
+            url: fullUrl,
+            fileName: att.fileName,
+          );
+          return;
+        } else {
+          rethrow;
+        }
+      }
 
       if (!mounted) return;
       Navigator.pop(context); // закрываем диалог загрузки
@@ -1672,22 +1694,24 @@ Future<void> _deleteSelectedMessages() async {
 
       if (!mounted) return;
 
-      // Обновляем localPath в сообщении, если найдено
-      setState(() {
-        for (int i = 0; i < _messages.length; i++) {
-          final msg = _messages[i];
-          final attIdx = msg.attachments.indexWhere((a) => a.fileName == att.fileName);
-          if (attIdx != -1) {
-            final updatedAtts = List<ChatAttachment>.from(msg.attachments);
-            updatedAtts[attIdx] = updatedAtts[attIdx].copyWith(localPath: savedPath);
-            _messages[i] = msg.copyWith(attachments: updatedAtts);
+      if (!kIsWeb) {
+        // Обновляем localPath в сообщении, если найдено
+        setState(() {
+          for (int i = 0; i < _messages.length; i++) {
+            final msg = _messages[i];
+            final attIdx = msg.attachments.indexWhere((a) => a.fileName == att.fileName);
+            if (attIdx != -1) {
+              final updatedAtts = List<ChatAttachment>.from(msg.attachments);
+              updatedAtts[attIdx] = updatedAtts[attIdx].copyWith(localPath: savedPath);
+              _messages[i] = msg.copyWith(attachments: updatedAtts);
+            }
           }
-        }
-      });
+        });
 
-      final res = await OpenFile.open(savedPath);
-      if (res.type != ResultType.done && mounted) {
-        _showError('Не удалось открыть файл: ${res.message}');
+        final res = await OpenFile.open(savedPath);
+        if (res.type != ResultType.done && mounted) {
+          _showError('Не удалось открыть файл: ${res.message}');
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -1801,21 +1825,31 @@ Future<void> _deleteSelectedMessages() async {
     }
   }
 
-  Future<void> _editAndSendAttachment(String path) async {
+  Future<void> _editAndSendAttachment(XFile image) async {
+    final rawBytes = await image.readAsBytes();
     final editedBytes = await Navigator.push<Uint8List>(
       context,
       MaterialPageRoute(
-        builder: (_) => ImageEditorScreen(imageFile: File(path)),
+        builder: (_) => ImageEditorScreen(imageBytes: rawBytes),
       ),
     );
 
+    final fileName = image.name.isNotEmpty ? image.name : 'photo_${DateTime.now().millisecondsSinceEpoch}.png';
     if (editedBytes != null) {
-      final tempDir = await getTemporaryDirectory();
-      final tempFile = File('${tempDir.path}/edited_${DateTime.now().millisecondsSinceEpoch}.png');
-      await tempFile.writeAsBytes(editedBytes);
-      _sendAttachment(tempFile.path);
+      if (kIsWeb) {
+        _sendAttachmentBytes(editedBytes, fileName);
+      } else {
+        final tempDir = await getTemporaryDirectory();
+        final tempFile = File('${tempDir.path}/edited_${DateTime.now().millisecondsSinceEpoch}.png');
+        await tempFile.writeAsBytes(editedBytes);
+        _sendAttachment(tempFile.path);
+      }
     } else {
-      _sendAttachment(path);
+      if (kIsWeb) {
+        _sendAttachmentBytes(rawBytes, fileName);
+      } else {
+        _sendAttachment(image.path);
+      }
     }
   }
 
@@ -1993,8 +2027,15 @@ Future<void> _deleteSelectedMessages() async {
       ];
       final replyId = _replyTo != null ? int.tryParse(_replyTo!.id) : null;
       final messageText = (text != null && text.isNotEmpty) ? text : '';
+      int targetChatId = _realChatId > 0 ? _realChatId : (int.tryParse(widget.chatId) ?? 0);
+      if (targetChatId == 0 && (widget.chatId == 'support' || widget.chatId.startsWith('operator_'))) {
+        try {
+          targetChatId = await chatService.getSupportChatId();
+          _realChatId = targetChatId;
+        } catch (_) {}
+      }
       final res = await chatService.sendMessageWithAttachments(
-        _realChatId,
+        targetChatId,
         messageText,
         atts,
         replyToId: replyId,
@@ -2071,6 +2112,7 @@ Future<void> _deleteSelectedMessages() async {
           heroTag: heroTag,
           onDownloadRequest: (url) => uploadService.downloadFile(url),
           onSendEdited: (editedPath) => _sendAttachment(editedPath),
+          onSendEditedBytes: (bytes, name) => _sendAttachmentBytes(bytes, name),
           onDelete: msg.isOwn ? () => _deleteSingleMessage(msg) : null,
         ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
@@ -2177,7 +2219,7 @@ Future<void> _deleteSelectedMessages() async {
                 Navigator.pop(context);
                 final picker = ImagePicker();
                 final image = await picker.pickImage(source: ImageSource.gallery);
-                if (image != null) _editAndSendAttachment(image.path);
+                if (image != null) _editAndSendAttachment(image);
               },
             ),
             ListTile(
@@ -2187,7 +2229,7 @@ Future<void> _deleteSelectedMessages() async {
                 Navigator.pop(context);
                 final picker = ImagePicker();
                 final image = await picker.pickImage(source: ImageSource.camera);
-                if (image != null) _editAndSendAttachment(image.path);
+                if (image != null) _editAndSendAttachment(image);
               },
             ),
             ListTile(
@@ -3089,7 +3131,7 @@ Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
                             initialTranscription: msg.transcription,
                             onDownload: () => _downloadFile(att),
                             onGetLocalAudio: () async {
-                              if (att.fileUrl == null) return null;
+                              if (att.fileUrl == null || kIsWeb) return null;
                               try {
                                 final bytes = await uploadService.downloadFile(att.fileUrl!);
                                 final dir = await getTemporaryDirectory();
@@ -3281,7 +3323,7 @@ Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
                       isOwn: msg.isOwn,
                       initialTranscription: msg.transcription,
                       onGetLocalAudio: () async {
-                        if (msg.voiceUrl == null) return null;
+                        if (msg.voiceUrl == null || kIsWeb) return null;
                         try {
                           final bytes = await uploadService.downloadFile(msg.voiceUrl!);
                           final dir = await getTemporaryDirectory();

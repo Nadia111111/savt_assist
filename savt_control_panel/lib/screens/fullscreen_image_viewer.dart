@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import '../theme/app_colors.dart';
 import '../services/file_save_helper.dart';
+import '../services/api_client.dart';
 import '../widgets/auth_image.dart';
+import '../widgets/web_html_image.dart';
 import '../widgets/bottom_nav_bar.dart';
 import 'image_editor_screen.dart';
 import '../main.dart';
@@ -18,6 +20,7 @@ class FullscreenImageViewer extends StatefulWidget {
   final String? heroTag;
   final Future<List<int>> Function(String url)? onDownloadRequest;
   final Function(String path)? onSendEdited;
+  final Function(Uint8List bytes, String fileName)? onSendEditedBytes;
   final VoidCallback? onShowInChat;
   final VoidCallback? onDelete;
 
@@ -29,6 +32,7 @@ class FullscreenImageViewer extends StatefulWidget {
     this.heroTag,
     this.onDownloadRequest,
     this.onSendEdited,
+    this.onSendEditedBytes,
     this.onShowInChat,
     this.onDelete,
   });
@@ -70,10 +74,40 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
       if (widget.onDownloadRequest != null) {
         try {
           final bytes = await widget.onDownloadRequest!(widget.imageUrl!);
+          if (bytes.isNotEmpty) {
+            final uint8List = Uint8List.fromList(bytes);
+            AuthImage.cacheBytes(widget.imageUrl!, uint8List);
+            return uint8List;
+          }
+        } catch (e) {
+          debugPrint('⚠️ [FullscreenImageViewer] onDownloadRequest failed: $e');
+        }
+      }
+
+      try {
+        final bytes = await uploadService.downloadFile(widget.imageUrl!);
+        if (bytes.isNotEmpty) {
           final uint8List = Uint8List.fromList(bytes);
           AuthImage.cacheBytes(widget.imageUrl!, uint8List);
           return uint8List;
-        } catch (_) {}
+        }
+      } catch (e) {
+        debugPrint('⚠️ [FullscreenImageViewer] uploadService.downloadFile failed: $e');
+      }
+
+      if (kIsWeb) {
+        try {
+          final fullUrl = widget.imageUrl!.startsWith('http')
+              ? widget.imageUrl!
+              : '${ApiClient.baseUrl}${widget.imageUrl!.startsWith('/') ? '' : '/'}${widget.imageUrl!}';
+          final webBytes = await fetchWebImageBytes(fullUrl);
+          if (webBytes != null && webBytes.isNotEmpty) {
+            AuthImage.cacheBytes(widget.imageUrl!, webBytes);
+            return webBytes;
+          }
+        } catch (e) {
+          debugPrint('⚠️ [FullscreenImageViewer] fetchWebImageBytes failed: $e');
+        }
       }
     }
     return null;
@@ -100,24 +134,57 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
           showProgress = true;
           showDownloadProgressDialog(
               context, widget.fileName, progressController.stream);
-          final downloadedBytes = await uploadService.downloadFile(
-            widget.imageUrl!,
-            onProgress: (sent, total) {
-              if (total > 0) {
-                progressController.add(sent / total);
+          try {
+            final downloadedBytes = await uploadService.downloadFile(
+              widget.imageUrl!,
+              onProgress: (sent, total) {
+                if (total > 0) {
+                  progressController.add(sent / total);
+                }
+              },
+            );
+            bytes = Uint8List.fromList(downloadedBytes);
+            AuthImage.cacheBytes(widget.imageUrl!, bytes);
+          } catch (downloadErr) {
+            debugPrint('Failed to download image bytes: $downloadErr');
+            if (kIsWeb) {
+              if (showProgress && mounted) {
+                Navigator.pop(context);
+                showProgress = false;
               }
-            },
-          );
-          bytes = Uint8List.fromList(downloadedBytes);
-          AuthImage.cacheBytes(widget.imageUrl!, bytes);
+              final fullUrl = widget.imageUrl!.startsWith('http')
+                  ? widget.imageUrl!
+                  : '${ApiClient.baseUrl}${widget.imageUrl!.startsWith('/') ? '' : '/'}${widget.imageUrl!}';
+              await FileSaveHelper.saveUrl(
+                context: context,
+                url: fullUrl,
+                fileName: widget.fileName,
+              );
+              return;
+            } else {
+              rethrow;
+            }
+          }
         }
       }
 
       if (showProgress && mounted) {
         Navigator.pop(context); // Close progress dialog
+        showProgress = false;
       }
 
       if (bytes == null) {
+        if (kIsWeb && widget.imageUrl != null) {
+          final fullUrl = widget.imageUrl!.startsWith('http')
+              ? widget.imageUrl!
+              : '${ApiClient.baseUrl}${widget.imageUrl!.startsWith('/') ? '' : '/'}${widget.imageUrl!}';
+          await FileSaveHelper.saveUrl(
+            context: context,
+            url: fullUrl,
+            fileName: widget.fileName,
+          );
+          return;
+        }
         throw Exception('Не удалось загрузить данные изображения');
       }
 
@@ -147,28 +214,32 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
   }
 
   Future<void> _editImage() async {
-    final bytes = await _getImageBytes();
-    if (!mounted) return;
-    if (bytes == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Изображение еще загружается или недоступно')),
+    setState(() => _isDownloading = true);
+    try {
+      final bytes = await _getImageBytes();
+      if (!mounted) return;
+      if (bytes == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Не удалось загрузить данные изображения для редактирования')),
+        );
+        return;
+      }
+
+      final edited = await Navigator.push<Uint8List>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ImageEditorScreen(imageBytes: bytes),
+        ),
       );
-      return;
-    }
 
-    if (!mounted) return;
-    final edited = await Navigator.push<Uint8List>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ImageEditorScreen(imageBytes: bytes),
-      ),
-    );
-
-    if (edited != null) {
-      setState(() {
-        _editedBytes = edited;
-      });
+      if (edited != null && mounted) {
+        setState(() {
+          _editedBytes = edited;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isDownloading = false);
     }
   }
 
@@ -188,6 +259,17 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
       }
 
       final screenSize = MediaQuery.of(context).size;
+
+      // On Web, render AuthImage directly via HTML <img> tag without delay
+      if (kIsWeb) {
+        return AuthImage(
+          url: widget.imageUrl!,
+          fit: BoxFit.contain,
+          width: screenSize.width,
+          height: screenSize.height,
+        );
+      }
+
       return FutureBuilder<Uint8List?>(
         future: _getImageBytes(),
         builder: (context, snapshot) {
@@ -307,7 +389,8 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
                   : _buildImageContent(context),
             ),
           ),
-          if (_editedBytes != null && widget.onSendEdited != null)
+          if (_editedBytes != null &&
+              (widget.onSendEdited != null || widget.onSendEditedBytes != null))
             Positioned(
               bottom: 30,
               left: 20,
@@ -322,15 +405,33 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
                         borderRadius: BorderRadius.circular(16)),
                   ),
                   onPressed: () async {
-                    if (kIsWeb) {
-                      if (context.mounted) Navigator.pop(context);
+                    if (_editedBytes == null) return;
+                    final fileName = 'edited_${DateTime.now().millisecondsSinceEpoch}.png';
+
+                    if (widget.onSendEditedBytes != null) {
+                      widget.onSendEditedBytes!(_editedBytes!, fileName);
+                      if (context.mounted) {
+                        Navigator.pop(context, true);
+                      }
                       return;
                     }
-                    final tempDir = await getTemporaryDirectory();
-                    final tempFile = File(
-                        '${tempDir.path}/edited_chat_${DateTime.now().millisecondsSinceEpoch}.png');
-                    await tempFile.writeAsBytes(_editedBytes!);
-                    widget.onSendEdited!(tempFile.path);
+
+                    if (!kIsWeb && widget.onSendEdited != null) {
+                      try {
+                        final tempDir = await getTemporaryDirectory();
+                        final tempFile = File(
+                            '${tempDir.path}/edited_chat_${DateTime.now().millisecondsSinceEpoch}.png');
+                        await tempFile.writeAsBytes(_editedBytes!);
+                        widget.onSendEdited!(tempFile.path);
+                      } catch (e) {
+                        debugPrint('Error writing edited file: $e');
+                      }
+                      if (context.mounted) {
+                        Navigator.pop(context, true);
+                      }
+                      return;
+                    }
+
                     if (context.mounted) {
                       Navigator.pop(context);
                     }

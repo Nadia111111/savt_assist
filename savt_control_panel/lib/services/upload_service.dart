@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
@@ -162,28 +163,122 @@ class UploadService {
           : '${ApiClient.baseUrl}${fileUrl.startsWith('/') ? '' : '/'}$fileUrl';
 
       if (kIsWeb) {
-        final response = await _apiClient.dio.get<List<int>>(
+        // Проверяем, является ли файл статическим ресурсом бэкенда (/static/ или /uploads/)
+        final uri = Uri.tryParse(fullUrl);
+        final isBackendStatic = uri != null &&
+            (uri.path.startsWith('/static/') ||
+             uri.path.startsWith('/uploads/') ||
+             fullUrl.contains('/static/') ||
+             fullUrl.contains('/uploads/'));
+
+        if (isBackendStatic) {
+          final downloadPath = uri.path.startsWith('/') ? uri.path : '/${uri.path}';
+          try {
+            final response = await _apiClient.dio.get<dynamic>(
+              '/upload/download',
+              queryParameters: {'url': downloadPath},
+              options: Options(
+                responseType: ResponseType.bytes,
+              ),
+              onReceiveProgress: onProgress,
+            );
+            final bytes = _extractBytes(response.data);
+            if (bytes.isNotEmpty) {
+              return bytes;
+            }
+          } catch (e) {
+            debugPrint('⚠️ [UploadService] /upload/download ($downloadPath) failed: $e');
+            if (uri.hasQuery) {
+              try {
+                final fullPathWithQuery = '$downloadPath?${uri.query}';
+                final response = await _apiClient.dio.get<dynamic>(
+                  '/upload/download',
+                  queryParameters: {'url': fullPathWithQuery},
+                  options: Options(
+                    responseType: ResponseType.bytes,
+                  ),
+                  onReceiveProgress: onProgress,
+                );
+                final bytes = _extractBytes(response.data);
+                if (bytes.isNotEmpty) {
+                  return bytes;
+                }
+              } catch (e2) {
+                debugPrint('⚠️ [UploadService] /upload/download with query failed: $e2');
+              }
+            }
+          }
+        }
+
+        // Прямое скачивание через webDio
+        final webDio = Dio(BaseOptions(
+          connectTimeout: const Duration(seconds: 25),
+          receiveTimeout: const Duration(seconds: 40),
+        ));
+        final response = await webDio.get<dynamic>(
           fullUrl,
-          options: Options(responseType: ResponseType.bytes),
+          options: Options(
+            responseType: ResponseType.bytes,
+            headers: {},
+          ),
           onReceiveProgress: onProgress,
         );
-        return response.data ?? [];
+        final bytes = _extractBytes(response.data);
+        if (bytes.isNotEmpty) {
+          return bytes;
+        }
+        return [];
       }
 
       final tempFile = File('${Directory.systemTemp.path}/temp_download_${DateTime.now().microsecondsSinceEpoch}');
-      await _apiClient.dio.download(
-        fullUrl,
-        tempFile.path,
-        onReceiveProgress: onProgress,
-      );
-      final bytes = await tempFile.readAsBytes();
       try {
-        await tempFile.delete();
-      } catch (_) {}
-      return bytes;
+        await _apiClient.dio.download(
+          fullUrl,
+          tempFile.path,
+          options: Options(
+            headers: {},
+          ),
+          onReceiveProgress: onProgress,
+        );
+        final bytes = await tempFile.readAsBytes();
+        return bytes;
+      } catch (nativeErr) {
+        debugPrint('⚠️ [UploadService] native download failed: $nativeErr, trying /upload/download...');
+        final uri = Uri.tryParse(fullUrl);
+        if (uri != null && (uri.path.startsWith('/static/') || uri.path.startsWith('/uploads/'))) {
+          final downloadPath = uri.path.startsWith('/') ? uri.path : '/${uri.path}';
+          final response = await _apiClient.dio.get<dynamic>(
+            '/upload/download',
+            queryParameters: {'url': downloadPath},
+            options: Options(responseType: ResponseType.bytes),
+            onReceiveProgress: onProgress,
+          );
+          final bytes = _extractBytes(response.data);
+          if (bytes.isNotEmpty) return bytes;
+        }
+        rethrow;
+      } finally {
+        try {
+          if (await tempFile.exists()) {
+            await tempFile.delete();
+          }
+        } catch (_) {}
+      }
     } on DioException catch (e) {
       throw _handleError(e);
     }
+  }
+
+  List<int> _extractBytes(dynamic data) {
+    if (data == null) return [];
+    if (data is ByteBuffer) {
+      return data.asUint8List();
+    } else if (data is Uint8List) {
+      return data;
+    } else if (data is List<int>) {
+      return data;
+    }
+    return [];
   }
 
   String _handleError(DioException e) {

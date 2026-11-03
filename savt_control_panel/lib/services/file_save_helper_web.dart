@@ -50,6 +50,32 @@ class FileSaveHelperPlatform {
     return '/web-virtual-fs/$fileName';
   }
 
+  /// Прямое скачивание файла по URL через встроенный механизм браузера
+  static Future<String> saveUrl({
+    required BuildContext context,
+    required String url,
+    required String fileName,
+  }) async {
+    final fullUrl = url.startsWith('http')
+        ? url
+        : 'https://helper.savt.by${url.startsWith('/') ? '' : '/'}$url';
+
+    final anchor = html.AnchorElement(href: fullUrl)
+      ..setAttribute('download', fileName)
+      ..setAttribute('target', '_blank')
+      ..style.display = 'none';
+
+    html.document.body?.append(anchor);
+    anchor.click();
+    anchor.remove();
+
+    if (context.mounted) {
+      _showSnackBar(context, 'Файл скачивается: $fileName', Colors.green);
+    }
+
+    return '/web-virtual-fs/$fileName';
+  }
+
   static void _showSnackBar(BuildContext context, String text, Color bgColor) {
     if (!context.mounted) return;
     try {

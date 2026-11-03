@@ -1,4 +1,5 @@
 // lib/widgets/web_html_image.dart
+import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
 import 'web_html_image_stub.dart'
     if (dart.library.html) 'web_html_image_web.dart';
@@ -16,3 +17,5 @@ Widget buildWebHtmlImage({
     loadingWidget: loadingWidget,
   );
 }
+
+Future<Uint8List?> fetchWebImageBytes(String url) => extractWebImageBytes(url);

@@ -1,7 +1,50 @@
 // lib/widgets/web_html_image_web.dart
+import 'dart:async';
+import 'dart:convert';
 import 'dart:html' as html;
+import 'dart:typed_data';
 import 'dart:ui_web' as ui_web;
 import 'package:flutter/material.dart';
+
+Future<Uint8List?> extractWebImageBytes(String url) async {
+  try {
+    final completer = Completer<Uint8List?>();
+    final img = html.ImageElement();
+    img.crossOrigin = 'anonymous';
+    img.src = url;
+
+    img.onLoad.listen((_) {
+      try {
+        final canvas = html.CanvasElement(
+          width: img.naturalWidth,
+          height: img.naturalHeight,
+        );
+        final ctx = canvas.context2D;
+        ctx.drawImage(img, 0, 0);
+        final dataUrl = canvas.toDataUrl('image/png');
+        final base64Str = dataUrl.split(',').last;
+        if (!completer.isCompleted) {
+          completer.complete(base64Decode(base64Str));
+        }
+      } catch (e) {
+        debugPrint('Canvas extract error: $e');
+        if (!completer.isCompleted) completer.complete(null);
+      }
+    });
+
+    img.onError.listen((_) {
+      if (!completer.isCompleted) completer.complete(null);
+    });
+
+    return await completer.future.timeout(
+      const Duration(seconds: 8),
+      onTimeout: () => null,
+    );
+  } catch (e) {
+    debugPrint('extractWebImageBytes error: $e');
+    return null;
+  }
+}
 
 Widget createWebHtmlImage({
   required String url,

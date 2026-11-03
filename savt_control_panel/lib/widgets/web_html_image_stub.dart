@@ -1,4 +1,5 @@
 // lib/widgets/web_html_image_stub.dart
+import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
 
 Widget createWebHtmlImage({
@@ -13,3 +14,5 @@ Widget createWebHtmlImage({
     errorBuilder: (_, __, ___) => errorWidget ?? const SizedBox(),
   );
 }
+
+Future<Uint8List?> extractWebImageBytes(String url) async => null;

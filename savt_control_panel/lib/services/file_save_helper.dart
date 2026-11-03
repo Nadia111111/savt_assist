@@ -66,4 +66,19 @@ class FileSaveHelper {
       fileName: fileName,
     );
   }
+
+  /// Saves a file directly from a URL.
+  /// On Web, this initiates a direct browser download through an anchor element, avoiding CORS issues.
+  /// On Mobile, this downloads the bytes and saves to Gallery or Downloads.
+  static Future<String> saveUrl({
+    required BuildContext context,
+    required String url,
+    required String fileName,
+  }) async {
+    return FileSaveHelperPlatform.saveUrl(
+      context: context,
+      url: url,
+      fileName: fileName,
+    );
+  }
 }

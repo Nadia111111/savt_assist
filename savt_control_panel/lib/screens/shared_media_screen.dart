@@ -1,11 +1,13 @@
 // lib/screens/shared_media_screen.dart
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../services/file_save_helper.dart';
+import '../services/api_client.dart';
 import 'package:path_provider/path_provider.dart';
 import '../utils/download_helper.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -25,6 +27,7 @@ class SharedMediaScreen extends StatefulWidget {
   final String chatTitle;
   final List<ChatMessage> messages;
   final Function(String) onSendEdited;
+  final Function(Uint8List bytes, String fileName)? onSendEditedBytes;
   final Function(String) onNavigateToMessage;
 
   const SharedMediaScreen({
@@ -33,6 +36,7 @@ class SharedMediaScreen extends StatefulWidget {
     required this.chatTitle,
     required this.messages,
     required this.onSendEdited,
+    this.onSendEditedBytes,
     required this.onNavigateToMessage,
   });
 
@@ -336,14 +340,34 @@ class _SharedMediaScreenState extends State<SharedMediaScreen> {
     final progressController = StreamController<double>();
     try {
       showDownloadProgressDialog(context, attachment.fileName, progressController.stream);
-      final bytes = await uploadService.downloadFile(
-        attachment.fileUrl!,
-        onProgress: (sent, total) {
-          if (total > 0) {
-            progressController.add(sent / total);
-          }
-        },
-      );
+      List<int>? bytes;
+      try {
+        bytes = await uploadService.downloadFile(
+          attachment.fileUrl!,
+          onProgress: (sent, total) {
+            if (total > 0) {
+              progressController.add(sent / total);
+            }
+          },
+        );
+      } catch (downloadErr) {
+        debugPrint('Failed to download media bytes: $downloadErr');
+        if (kIsWeb) {
+          if (mounted) Navigator.pop(context); // Close progress dialog
+          final fullUrl = attachment.fileUrl!.startsWith('http')
+              ? attachment.fileUrl!
+              : '${ApiClient.baseUrl}${attachment.fileUrl!.startsWith('/') ? '' : '/'}${attachment.fileUrl!}';
+          await FileSaveHelper.saveUrl(
+            context: context,
+            url: fullUrl,
+            fileName: attachment.fileName,
+          );
+          return;
+        } else {
+          rethrow;
+        }
+      }
+
       if (!mounted) return;
       Navigator.pop(context); // Close progress dialog
 
@@ -455,8 +479,9 @@ class _SharedMediaScreenState extends State<SharedMediaScreen> {
               return ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: GestureDetector(
-                  onTap: () {
-                    Navigator.push(
+                  onTap: () async {
+                    final heroTag = 'shared_${attModel.messageId}_${att.fileName}';
+                    final sent = await Navigator.push<bool>(
                       context,
                       PageRouteBuilder(
                         opaque: false,
@@ -465,11 +490,12 @@ class _SharedMediaScreenState extends State<SharedMediaScreen> {
                         reverseTransitionDuration: const Duration(milliseconds: 220),
                         pageBuilder: (context, animation, secondaryAnimation) => FullscreenImageViewer(
                           imageUrl: att.fileUrl,
-                          localPath: att.localPath,
+                          localPath: kIsWeb ? null : att.localPath,
                           fileName: att.fileName,
                           heroTag: heroTag,
                           onDownloadRequest: (url) => uploadService.downloadFile(url),
                           onSendEdited: widget.onSendEdited,
+                          onSendEditedBytes: widget.onSendEditedBytes,
                           onShowInChat: () {
                             Navigator.pop(context); // Close FullscreenImageViewer
                             widget.onNavigateToMessage(attModel.messageId);
@@ -480,12 +506,17 @@ class _SharedMediaScreenState extends State<SharedMediaScreen> {
                         },
                       ),
                     );
+
+                    // If edited photo was sent to chat from the viewer, close gallery so user returns to chat
+                    if (sent == true && mounted) {
+                      Navigator.pop(context);
+                    }
                   },
                   child: Hero(
                     tag: heroTag,
-                    child: att.localPath != null
+                    child: (!kIsWeb && att.localPath != null && File(att.localPath!).existsSync())
                         ? Image.file(File(att.localPath!), fit: BoxFit.cover)
-                        : AuthImage(url: att.fileUrl!, fit: BoxFit.cover),
+                        : AuthImage(url: att.fileUrl ?? '', fit: BoxFit.cover),
                   ),
                 ),
               );

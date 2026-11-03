@@ -58,7 +58,14 @@ class ApiClient {
         }
 
         final path = options.uri.path;
-        final isStatic = path.startsWith('/static/') || options.path.startsWith('/static/');
+        final isStatic = path.startsWith('/static/') ||
+            path.startsWith('/uploads/') ||
+            path.contains('/static/') ||
+            path.contains('/uploads/') ||
+            options.path.startsWith('/static/') ||
+            options.path.startsWith('static/') ||
+            options.path.startsWith('/uploads/') ||
+            options.path.startsWith('uploads/');
 
         // Публичные эндпоинты авторизации не должны отправлять заголовок Authorization
         final bool isPublicAuthEndpoint = path.contains('/auth/refresh') ||
@@ -78,12 +85,23 @@ class ApiClient {
           if (token != null && token.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $token';
           }
-        } else if (hasExplicitNullAuth || isPublicAuthEndpoint) {
+        } else {
           options.headers.remove('Authorization');
         }
 
-        if (options.data is FormData) {
+        // Drop Content-Type for GET/HEAD requests and requests with no body
+        final isBodyless = options.method.toUpperCase() == 'GET' ||
+            options.method.toUpperCase() == 'HEAD' ||
+            options.data == null;
+        if (isBodyless || options.data is FormData) {
           options.headers.remove('Content-Type');
+        }
+
+        // For static assets, drop API-specific headers to avoid triggering CORS preflight (OPTIONS)
+        if (isStatic) {
+          options.headers.remove('Content-Type');
+          options.headers.remove('Accept');
+          options.headers.remove('Authorization');
         }
 
         debugPrint('🔵 [API] ${options.method} ${options.uri}');
