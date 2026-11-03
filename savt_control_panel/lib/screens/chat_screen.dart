@@ -737,11 +737,22 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-void _showError(String message) {
-     if (mounted) {
-       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.red));
-     }
-   }
+  void _showError(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            message,
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+          ),
+          backgroundColor: Colors.red.shade700,
+          behavior: SnackBarBehavior.floating,
+          width: kIsWeb ? 420 : null,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    }
+  }
 
    void _enterSelectionMode(String messageId) {
      setState(() {
@@ -2570,127 +2581,136 @@ Future<void> _deleteSelectedMessages() async {
     );
   }
 
-Widget _buildAppBarHeader() {
-     if (_isSearching) {
-       return Row(
-         crossAxisAlignment: CrossAxisAlignment.center,
-         children: [
-           IconButton(
-             icon: const Icon(Icons.arrow_back, color: Colors.white),
-             onPressed: _stopSearch,
-           ),
-           Expanded(
-             child: TextField(
-               controller: _searchController,
-               decoration: const InputDecoration(
-                 hintText: 'Поиск...',
-                 border: InputBorder.none,
-                 hintStyle: TextStyle(color: Colors.white70),
-                 filled: false,
-                 fillColor: Colors.transparent,
-               ),
-               style: const TextStyle(color: Colors.white),
-               autofocus: true,
-               onChanged: _onSearchChanged,
-             ),
-           ),
-           if (_matchingIndices.isNotEmpty) ...[
-             Text(
-               '${_currentMatchIndex + 1} из ${_matchingIndices.length}',
-               style: const TextStyle(color: Colors.white70, fontSize: 13),
-             ),
-             IconButton(
-               icon: const Icon(Icons.keyboard_arrow_up, color: Colors.white),
-               onPressed: _prevMatch,
-             ),
-             IconButton(
-               icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white),
-               onPressed: _nextMatch,
-             ),
-           ],
-         ],
-       );
-     }
+  Widget _buildAppBarHeader() {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 600),
+        child: _buildAppBarHeaderContent(),
+      ),
+    );
+  }
 
-     if (_isSelectionMode) {
-       return Row(
-         crossAxisAlignment: CrossAxisAlignment.center,
-         children: [
-           IconButton(
-             icon: const Icon(Icons.close, color: Colors.white),
-             onPressed: _exitSelectionMode,
-           ),
-           Expanded(
-             child: Text(
-               '${_selectedMessages.length} выбрано',
-               style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-               maxLines: 1,
-               overflow: TextOverflow.ellipsis,
-             ),
-           ),
-         ],
-       );
-     }
+  Widget _buildAppBarHeaderContent() {
+    if (_isSearching) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: _stopSearch,
+          ),
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              decoration: const InputDecoration(
+                hintText: 'Поиск...',
+                border: InputBorder.none,
+                hintStyle: TextStyle(color: Colors.white70),
+                filled: false,
+                fillColor: Colors.transparent,
+              ),
+              style: const TextStyle(color: Colors.white),
+              autofocus: true,
+              onChanged: _onSearchChanged,
+            ),
+          ),
+          if (_matchingIndices.isNotEmpty) ...[
+            Text(
+              '${_currentMatchIndex + 1} из ${_matchingIndices.length}',
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+            IconButton(
+              icon: const Icon(Icons.keyboard_arrow_up, color: Colors.white),
+              onPressed: _prevMatch,
+            ),
+            IconButton(
+              icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white),
+              onPressed: _nextMatch,
+            ),
+          ],
+        ],
+      );
+    }
 
-     return Row(
-       crossAxisAlignment: CrossAxisAlignment.center,
-       children: [
-         IconButton(
-           icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 18),
-           onPressed: () => Navigator.pop(context),
-         ),
-         Expanded(
-           child: GestureDetector(
-             behavior: HitTestBehavior.translucent,
-             onTap: _openSharedMedia,
-             child: Row(
-               children: [
-                 CircleAvatar(
-                   radius: 18,
-                   backgroundColor: Colors.white24,
-                   child: Text(
-                     _chatTitle.isNotEmpty ? _chatTitle[0].toUpperCase() : 'Ч',
-                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                   ),
-                 ),
-                 const SizedBox(width: 10),
-                 Expanded(
-                   child: Column(
-                     crossAxisAlignment: CrossAxisAlignment.start,
-                     mainAxisAlignment: MainAxisAlignment.center,
-                     children: [
-                       Text(
-                         _chatTitle,
-                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                         maxLines: 1,
-                         overflow: TextOverflow.ellipsis,
-                       ),
-                       const Text(
-                         'показать материалы',
-                         style: TextStyle(fontSize: 11, color: Colors.white70),
-                       ),
-                     ],
-                   ),
-                 ),
-               ],
-             ),
-           ),
-         ),
-         IconButton(
-           icon: const Icon(Icons.settings, color: Colors.white),
-           onPressed: _openChatSettings,
-         ),
-         IconButton(
-           icon: const Icon(Icons.search, color: Colors.white),
-           onPressed: () {
-             setState(() {
-               _isSearching = true;
-             });
-           },
-         ),
-       ],
-     );
-   }
+    if (_isSelectionMode) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.close, color: Colors.white),
+            onPressed: _exitSelectionMode,
+          ),
+          Expanded(
+            child: Text(
+              '${_selectedMessages.length} выбрано',
+              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 18),
+          onPressed: () => Navigator.pop(context),
+        ),
+        Expanded(
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: _openSharedMedia,
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: Colors.white24,
+                  child: Text(
+                    _chatTitle.isNotEmpty ? _chatTitle[0].toUpperCase() : 'Ч',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        _chatTitle,
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const Text(
+                        'показать материалы',
+                        style: TextStyle(fontSize: 11, color: Colors.white70),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.settings, color: Colors.white),
+          onPressed: _openChatSettings,
+        ),
+        IconButton(
+          icon: const Icon(Icons.search, color: Colors.white),
+          onPressed: () {
+            setState(() {
+              _isSearching = true;
+            });
+          },
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

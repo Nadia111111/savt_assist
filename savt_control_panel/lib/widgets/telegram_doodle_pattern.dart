@@ -17,18 +17,20 @@ class TelegramDoodlePattern extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: backgroundColor,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          CustomPaint(
-            painter: _SavtMonogramPainter(
-              color: doodleColor.withValues(alpha: opacity),
+    return ClipRect(
+      child: Container(
+        color: backgroundColor,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            CustomPaint(
+              painter: _SavtMonogramPainter(
+                color: doodleColor.withValues(alpha: opacity),
+              ),
             ),
-          ),
-          if (child != null) child!,
-        ],
+            if (child != null) child!,
+          ],
+        ),
       ),
     );
   }
@@ -41,7 +43,10 @@ class _SavtMonogramPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (color.a <= 0) return;
+    if (color.a <= 0 || size.width <= 0 || size.height <= 0) return;
+
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
 
     final textStyle = TextStyle(
       color: color,
@@ -76,6 +81,8 @@ class _SavtMonogramPainter extends CustomPainter {
         tp.paint(canvas, Offset(x - tp.width / 2, y - tp.height / 2));
       }
     }
+
+    canvas.restore();
   }
 
   @override

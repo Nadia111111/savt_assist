@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -39,7 +40,7 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
   double _bubbleRadius = 17.0;
   double _fontSize = 15.0;
   String _chatListMode = 'two_line';
-  String _nameColorHex = '#10B981';
+  String _nameColorHex = '#3B82F6'; // 'Синий' default
   String _userName = 'Пользователь';
   String _wallpaperUrl = '';
 
@@ -332,29 +333,49 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
     if (mounted) {
       setState(() => _isSaving = false);
       if (manual) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white, size: 20),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    _isPerChat
-                        ? 'Настройки для этого чата успешно сохранены!'
-                        : 'Настройки сохранены и применены ко всем чатам!',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: const Color(0xFF054582),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 3),
-          ),
+        _showCustomSnackBar(
+          _isPerChat
+              ? 'Настройки для этого чата успешно сохранены!'
+              : 'Настройки сохранены и применены ко всем чатам!',
         );
       }
     }
+  }
+
+  void _showCustomSnackBar(String text, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline : Icons.check_circle,
+              color: Colors.white,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                text,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: isError ? Colors.red.shade700 : const Color(0xFF054582),
+        behavior: SnackBarBehavior.floating,
+        width: kIsWeb ? 420 : null,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   Future<void> _resetToDefaults() async {
@@ -381,15 +402,16 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
 
       await _loadAllSettings();
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Настройки чата сброшены к общим'),
-            backgroundColor: Color(0xFF054582),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      setState(() {
+        _activePresetId = PreferencesService.getChatThemePreset();
+        _nameColorHex = PreferencesService.getNameColor();
+        _wallpaperUrl = '';
+        _customOwnColor = null;
+        _customOtherColor = null;
+        _customBotColor = null;
+      });
+
+      _showCustomSnackBar('Настройки чата сброшены к общим');
     } else {
       final allKeys = prefs.getKeys().toList();
       for (final k in allKeys) {
@@ -405,7 +427,7 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
         _bubbleRadius = 17.0;
         _fontSize = 15.0;
         _chatListMode = 'two_line';
-        _nameColorHex = '#054582';
+        _nameColorHex = '#3B82F6'; // 'Синий' вместо темно-синего
         _wallpaperUrl = '';
         _customOwnColor = null;
         _customOtherColor = null;
@@ -414,15 +436,7 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
 
       await _saveSettings(manual: true);
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Все настройки сброшены по умолчанию для всех чатов'),
-            backgroundColor: Color(0xFF054582),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      _showCustomSnackBar('Все настройки сброшены по умолчанию для всех чатов');
     }
   }
 
@@ -480,28 +494,12 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
           _wallpaperUrl = url;
         });
         _onSettingChanged(immediate: true);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Обои успешно установлены'),
-              backgroundColor: Color(0xFF054582),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
+        _showCustomSnackBar('Обои успешно установлены');
       } else {
         throw Exception('Не удалось сохранить изображение');
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Ошибка загрузки фото: $e'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      _showCustomSnackBar('Ошибка загрузки фото: $e', isError: true);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -589,62 +587,62 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: cardBg,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
-              blurRadius: 10,
-              offset: const Offset(0, -3),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          bottom: false,
-          child: Center(
-            heightFactor: 1.0,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 600),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                child: ElevatedButton(
-                  onPressed: _isSaving ? null : () => _saveSettings(manual: true),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: buttonBg,
-                    foregroundColor: Colors.white,
-                    elevation: 2,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 500),
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+              decoration: BoxDecoration(
+                color: cardBg,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
                   ),
-                  child: _isSaving
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2.5,
-                          ),
-                        )
-                      : Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.check_circle_outline, size: 20),
-                            const SizedBox(width: 8),
-                            Text(
-                              _isPerChat
-                                  ? 'Сохранить для этого чата'
-                                  : 'Сохранить для всех чатов',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
+                ],
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: ElevatedButton(
+                onPressed: _isSaving ? null : () => _saveSettings(manual: true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: buttonBg,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
+                child: _isSaving
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2.5,
+                        ),
+                      )
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.check_circle_outline, size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            _isPerChat
+                                ? 'Сохранить для этого чата'
+                                : 'Сохранить для всех чатов',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
               ),
             ),
           ),
@@ -709,18 +707,19 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
                         accentColor: brandAccent,
                       ),
 
-                      const SizedBox(height: 12),
-
-                      // 6. CHAT LIST MODE CARD (Two-line / Three-line)
-                      _buildChatListModeCard(
-                        isDark: isDark,
-                        cardBg: cardBg,
-                        cardInnerBg: cardInnerBg,
-                        textPrimary: textPrimary,
-                        textSecondary: textSecondary,
-                        accentColor: brandAccent,
-                        selectionBorderColor: brandAccent,
-                      ),
+                      // 6. CHAT LIST MODE CARD (Two-line / Three-line) - only for global settings
+                      if (!_isPerChat) ...[
+                        const SizedBox(height: 12),
+                        _buildChatListModeCard(
+                          isDark: isDark,
+                          cardBg: cardBg,
+                          cardInnerBg: cardInnerBg,
+                          textPrimary: textPrimary,
+                          textSecondary: textSecondary,
+                          accentColor: brandAccent,
+                          selectionBorderColor: brandAccent,
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -748,13 +747,15 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
     final double effectiveRadius = _bubbleRadius;
     final double smallRadius = (effectiveRadius * 0.25).clamp(2.0, 6.0);
 
-    return Container(
-      height: 165,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: bgColor,
-      ),
-      child: Stack(
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        height: 165,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: bgColor,
+        ),
+        child: Stack(
         children: [
           // Background: image or vector doodle pattern (no hearts!)
           Positioned.fill(
@@ -1209,33 +1210,6 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
                 AppTheme.saveTheme(newMode);
                 PreferencesService.saveThemeChoice(!isDark);
               },
-            ),
-
-            Divider(height: 1, indent: 56, color: dividerColor),
-
-            // Theme Settings Tile
-            ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-              leading: Icon(
-                Icons.brush_outlined,
-                color: accentColor,
-                size: 24,
-              ),
-              title: Text(
-                'Настройки темы',
-                style: TextStyle(
-                  color: textPrimary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              trailing: Icon(
-                Icons.chevron_right,
-                color: isDark ? Colors.white38 : Colors.black38,
-                size: 20,
-              ),
-              onTap: () => _showThemeSettingsBottomSheet(context, isDark, cardBg, textPrimary, accentColor, dividerColor),
             ),
           ],
         ),
@@ -1734,6 +1708,40 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
                   ),
                 ),
 
+                // Color Wheel Option Button
+                Material(
+                  color: cardBg,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        gradient: const SweepGradient(
+                          colors: [
+                            Color(0xFFFF0000),
+                            Color(0xFFFFFF00),
+                            Color(0xFF00FF00),
+                            Color(0xFF00FFFF),
+                            Color(0xFF0000FF),
+                            Color(0xFFFF00FF),
+                            Color(0xFFFF0000),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.palette_outlined, color: Colors.white, size: 20),
+                    ),
+                    title: Text('Свой цвет (цветовой круг)',
+                        style: TextStyle(color: textPrimary, fontSize: 15)),
+                    trailing: Icon(Icons.chevron_right,
+                        color: isDark ? Colors.white38 : Colors.black38, size: 20),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _openColorWheelDialog(context, isDark);
+                    },
+                  ),
+                ),
+
                 Divider(color: dividerColor, height: 16),
                 Text(
                   'Однотонный фон',
@@ -1752,6 +1760,14 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
                     scrollDirection: Axis.horizontal,
                     children: [
                       _buildWallpaperColorCircle('', 'По умолчанию', isDark, accentColor),
+                      _buildColorWheelTriggerCircle(isDark, accentColor),
+                      if (_isCustomHexColor(_wallpaperUrl))
+                        _buildWallpaperColorCircle(
+                          _wallpaperUrl.replaceFirst('color:', ''),
+                          'Пользовательский',
+                          isDark,
+                          accentColor,
+                        ),
                       _buildWallpaperColorCircle('#0B1120', 'SAVT Темный', isDark, accentColor),
                       _buildWallpaperColorCircle('#1E293B', 'Синий сланец', isDark, accentColor),
                       _buildWallpaperColorCircle('#064E3B', 'Изумруд', isDark, accentColor),
@@ -1825,6 +1841,102 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
                     color: isDark ? Colors.white38 : Colors.black38, size: 18)
                 : null),
       ),
+    );
+  }
+
+  Widget _buildColorWheelTriggerCircle(bool isDark, Color accentColor) {
+    final isCustomActive = _isCustomHexColor(_wallpaperUrl);
+
+    return Tooltip(
+      message: 'Выбрать любой цвет на цветовом круге',
+      child: GestureDetector(
+        onTap: () {
+          Navigator.pop(context);
+          _openColorWheelDialog(context, isDark);
+        },
+        child: Container(
+          margin: const EdgeInsets.only(right: 12),
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const SweepGradient(
+              colors: [
+                Color(0xFFFF0000),
+                Color(0xFFFFFF00),
+                Color(0xFF00FF00),
+                Color(0xFF00FFFF),
+                Color(0xFF0000FF),
+                Color(0xFFFF00FF),
+                Color(0xFFFF0000),
+              ],
+            ),
+            border: Border.all(
+              color: isCustomActive ? accentColor : (isDark ? Colors.white54 : Colors.black26),
+              width: isCustomActive ? 3 : 1.5,
+            ),
+            boxShadow: isCustomActive
+                ? [
+                    BoxShadow(
+                      color: accentColor.withValues(alpha: 0.35),
+                      blurRadius: 6,
+                      spreadRadius: 1,
+                    ),
+                  ]
+                : null,
+          ),
+          child: Center(
+            child: Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1A2332) : Colors.white,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.palette,
+                size: 15,
+                color: isDark ? Colors.white : const Color(0xFF054582),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  bool _isCustomHexColor(String url) {
+    if (!url.startsWith('color:#')) return false;
+    final hex = url.replaceFirst('color:', '').toUpperCase();
+    const presets = ['#0B1120', '#1E293B', '#064E3B', '#054582', '#FFFFFF', '#F1F5F9'];
+    return !presets.contains(hex);
+  }
+
+  void _openColorWheelDialog(BuildContext context, bool isDark) {
+    Color initialColor = const Color(0xFF054582);
+    if (_wallpaperUrl.startsWith('color:#')) {
+      try {
+        initialColor = ChatNameColor.parse(_wallpaperUrl.replaceFirst('color:', ''));
+      } catch (_) {}
+    }
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) {
+        return _ColorWheelDialog(
+          initialColor: initialColor,
+          isDark: isDark,
+          onColorSelected: (selectedColor) {
+            final hex =
+                '#${selectedColor.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
+            setState(() {
+              _wallpaperUrl = 'color:$hex';
+            });
+            _onSettingChanged(immediate: true);
+            _showCustomSnackBar('Цвет фона чата успешно обновлен');
+          },
+        );
+      },
     );
   }
 
@@ -2162,4 +2274,413 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
       ),
     );
   }
+}
+
+class _ColorWheelDialog extends StatefulWidget {
+  final Color initialColor;
+  final bool isDark;
+  final ValueChanged<Color> onColorSelected;
+
+  const _ColorWheelDialog({
+    required this.initialColor,
+    required this.isDark,
+    required this.onColorSelected,
+  });
+
+  @override
+  State<_ColorWheelDialog> createState() => _ColorWheelDialogState();
+}
+
+class _ColorWheelDialogState extends State<_ColorWheelDialog> {
+  late double _hue;
+  late double _saturation;
+  late double _value;
+
+  @override
+  void initState() {
+    super.initState();
+    final hsv = HSVColor.fromColor(widget.initialColor);
+    _hue = hsv.hue;
+    _saturation = hsv.saturation > 0.05 ? hsv.saturation : 1.0;
+    _value = hsv.value > 0.05 ? hsv.value : 1.0;
+  }
+
+  Color get _currentColor => HSVColor.fromAHSV(1.0, _hue, _saturation, _value).toColor();
+
+  String get _currentHex =>
+      '#${_currentColor.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
+
+  @override
+  Widget build(BuildContext context) {
+    final dialogBg = widget.isDark ? const Color(0xFF1A2332) : Colors.white;
+    final textPrimary = widget.isDark ? Colors.white : const Color(0xFF0F172A);
+    final textSecondary = widget.isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+    final sliderInactive = widget.isDark ? const Color(0xFF2A3A4D) : const Color(0xFFE2E8F0);
+
+    return Dialog(
+      backgroundColor: dialogBg,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Цветовой круг',
+                    style: TextStyle(
+                      color: textPrimary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close, color: textSecondary, size: 20),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Interactive Color Wheel
+              SizedBox(
+                width: 220,
+                height: 220,
+                child: GestureDetector(
+                  onPanDown: (details) => _handleWheelTouch(details.localPosition),
+                  onPanUpdate: (details) => _handleWheelTouch(details.localPosition),
+                  child: CustomPaint(
+                    size: const Size(220, 220),
+                    painter: _ColorWheelPainter(hue: _hue),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Color preview banner with Hex Code
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: widget.isDark ? const Color(0xFF141D2B) : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: widget.isDark ? Colors.white12 : Colors.black12,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: _currentColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: _currentColor.withValues(alpha: 0.4),
+                            blurRadius: 6,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Выбранный цвет',
+                            style: TextStyle(color: textSecondary, fontSize: 12),
+                          ),
+                          Text(
+                            _currentHex,
+                            style: TextStyle(
+                              color: textPrimary,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Saturation Slider
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Насыщенность',
+                        style: TextStyle(color: textSecondary, fontSize: 13),
+                      ),
+                      Text(
+                        '${(_saturation * 100).toInt()}%',
+                        style: TextStyle(
+                          color: textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      activeTrackColor: _currentColor,
+                      thumbColor: _currentColor,
+                      inactiveTrackColor: sliderInactive,
+                      trackHeight: 4,
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                    ),
+                    child: Slider(
+                      value: _saturation,
+                      min: 0.0,
+                      max: 1.0,
+                      onChanged: (val) => setState(() => _saturation = val),
+                    ),
+                  ),
+                ],
+              ),
+
+              // Brightness Slider
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Яркость',
+                        style: TextStyle(color: textSecondary, fontSize: 13),
+                      ),
+                      Text(
+                        '${(_value * 100).toInt()}%',
+                        style: TextStyle(
+                          color: textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      activeTrackColor: _currentColor,
+                      thumbColor: _currentColor,
+                      inactiveTrackColor: sliderInactive,
+                      trackHeight: 4,
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                    ),
+                    child: Slider(
+                      value: _value,
+                      min: 0.05,
+                      max: 1.0,
+                      onChanged: (val) => setState(() => _value = val),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              // Quick Swatches
+              SizedBox(
+                height: 36,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    _buildSwatch(const Color(0xFFEF4444)), // Red
+                    _buildSwatch(const Color(0xFFF97316)), // Orange
+                    _buildSwatch(const Color(0xFFF59E0B)), // Amber
+                    _buildSwatch(const Color(0xFF10B981)), // Emerald
+                    _buildSwatch(const Color(0xFF06B6D4)), // Cyan
+                    _buildSwatch(const Color(0xFF3B82F6)), // Blue
+                    _buildSwatch(const Color(0xFF6366F1)), // Indigo
+                    _buildSwatch(const Color(0xFF8B5CF6)), // Purple
+                    _buildSwatch(const Color(0xFFEC4899)), // Pink
+                    _buildSwatch(const Color(0xFF054582)), // SAVT Blue
+                    _buildSwatch(const Color(0xFF0B1120)), // SAVT Dark
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // Action Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        side: BorderSide(
+                          color: widget.isDark ? Colors.white24 : Colors.black12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(
+                        'Отмена',
+                        style: TextStyle(
+                          color: textPrimary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF054582),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      onPressed: () {
+                        widget.onColorSelected(_currentColor);
+                        Navigator.pop(context);
+                      },
+                      child: const Text(
+                        'Применить',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSwatch(Color color) {
+    final isSelected = (_currentColor.toARGB32() & 0x00FFFFFF) == (color.toARGB32() & 0x00FFFFFF);
+    return GestureDetector(
+      onTap: () {
+        final hsv = HSVColor.fromColor(color);
+        setState(() {
+          _hue = hsv.hue;
+          _saturation = hsv.saturation;
+          _value = hsv.value;
+        });
+      },
+      child: Container(
+        margin: const EdgeInsets.only(right: 8),
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: isSelected ? Colors.white : Colors.transparent,
+            width: 2.5,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.6),
+                    blurRadius: 5,
+                    spreadRadius: 1,
+                  ),
+                ]
+              : null,
+        ),
+      ),
+    );
+  }
+
+  void _handleWheelTouch(Offset localPos) {
+    const center = Offset(110, 110);
+    final dx = localPos.dx - center.dx;
+    final dy = localPos.dy - center.dy;
+    double deg = (math.atan2(dy, dx) * 180.0 / math.pi) + 90;
+    if (deg < 0) deg += 360;
+    if (deg >= 360) deg -= 360;
+    setState(() {
+      _hue = deg.clamp(0.0, 360.0);
+    });
+  }
+}
+
+class _ColorWheelPainter extends CustomPainter {
+  final double hue;
+
+  _ColorWheelPainter({required this.hue});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2;
+    final strokeWidth = radius * 0.32;
+    final ringRadius = radius - strokeWidth / 2;
+
+    const sweepGradient = SweepGradient(
+      colors: [
+        Color(0xFFFF0000),
+        Color(0xFFFFFF00),
+        Color(0xFF00FF00),
+        Color(0xFF00FFFF),
+        Color(0xFF0000FF),
+        Color(0xFFFF00FF),
+        Color(0xFFFF0000),
+      ],
+    );
+
+    final ringPaint = Paint()
+      ..shader = sweepGradient.createShader(Rect.fromCircle(center: center, radius: ringRadius))
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+
+    canvas.drawCircle(center, ringRadius, ringPaint);
+
+    // Indicator thumb on the ring
+    final rad = (hue - 90) * math.pi / 180.0;
+    final thumbPos = Offset(
+      center.dx + ringRadius * math.cos(rad),
+      center.dy + ringRadius * math.sin(rad),
+    );
+
+    final shadowPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.3)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+    canvas.drawCircle(thumbPos, 14, shadowPaint);
+
+    final thumbPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(thumbPos, 13, thumbPaint);
+
+    final innerColorPaint = Paint()
+      ..color = HSVColor.fromAHSV(1.0, hue, 1.0, 1.0).toColor()
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(thumbPos, 8, innerColorPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ColorWheelPainter oldDelegate) => oldDelegate.hue != hue;
 }

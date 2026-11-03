@@ -391,7 +391,13 @@ class _SharedMediaScreenState extends State<SharedMediaScreen> {
   void _showError(String text) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(text), backgroundColor: AppColors.error),
+        SnackBar(
+          content: Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          width: kIsWeb ? 420 : null,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
       );
     }
   }
@@ -466,8 +472,8 @@ class _SharedMediaScreenState extends State<SharedMediaScreen> {
             controller: _photosScrollController,
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(AppSpacing.md),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: MediaQuery.of(context).size.width > 600 ? 4 : 3,
               crossAxisSpacing: 8,
               mainAxisSpacing: 8,
             ),
@@ -475,48 +481,60 @@ class _SharedMediaScreenState extends State<SharedMediaScreen> {
             itemBuilder: (context, idx) {
               final attModel = _images[idx];
               final att = attModel.attachment;
-              final heroTag = 'shared_image_${att.fileUrl ?? att.localPath ?? idx}';
+              final heroTag = 'shared_media_${attModel.messageId}_${att.fileName}_$idx';
               return ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: GestureDetector(
-                  onTap: () async {
-                    final heroTag = 'shared_${attModel.messageId}_${att.fileName}';
-                    final sent = await Navigator.push<bool>(
-                      context,
-                      PageRouteBuilder(
-                        opaque: false,
-                        barrierColor: Colors.transparent,
-                        transitionDuration: const Duration(milliseconds: 260),
-                        reverseTransitionDuration: const Duration(milliseconds: 220),
-                        pageBuilder: (context, animation, secondaryAnimation) => FullscreenImageViewer(
-                          imageUrl: att.fileUrl,
-                          localPath: kIsWeb ? null : att.localPath,
-                          fileName: att.fileName,
-                          heroTag: heroTag,
-                          onDownloadRequest: (url) => uploadService.downloadFile(url),
-                          onSendEdited: widget.onSendEdited,
-                          onSendEditedBytes: widget.onSendEditedBytes,
-                          onShowInChat: () {
-                            Navigator.pop(context); // Close FullscreenImageViewer
-                            widget.onNavigateToMessage(attModel.messageId);
-                          },
-                        ),
-                        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                          return FadeTransition(opacity: animation, child: child);
-                        },
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Hero(
+                        tag: heroTag,
+                        child: (!kIsWeb && att.localPath != null && File(att.localPath!).existsSync())
+                            ? Image.file(File(att.localPath!), fit: BoxFit.cover)
+                            : AuthImage(url: att.fileUrl ?? '', fit: BoxFit.cover),
                       ),
-                    );
+                      Positioned.fill(
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () async {
+                              final sent = await Navigator.push<bool>(
+                                context,
+                                PageRouteBuilder(
+                                  opaque: false,
+                                  barrierColor: Colors.transparent,
+                                  transitionDuration: const Duration(milliseconds: 260),
+                                  reverseTransitionDuration: const Duration(milliseconds: 220),
+                                  pageBuilder: (context, animation, secondaryAnimation) => FullscreenImageViewer(
+                                    imageUrl: att.fileUrl,
+                                    localPath: kIsWeb ? null : att.localPath,
+                                    fileName: att.fileName,
+                                    heroTag: heroTag,
+                                    onDownloadRequest: (url) => uploadService.downloadFile(url),
+                                    onSendEdited: widget.onSendEdited,
+                                    onSendEditedBytes: widget.onSendEditedBytes,
+                                    onShowInChat: () {
+                                      Navigator.pop(context); // Close FullscreenImageViewer
+                                      widget.onNavigateToMessage(attModel.messageId);
+                                    },
+                                  ),
+                                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                    return FadeTransition(opacity: animation, child: child);
+                                  },
+                                ),
+                              );
 
-                    // If edited photo was sent to chat from the viewer, close gallery so user returns to chat
-                    if (sent == true && mounted) {
-                      Navigator.pop(context);
-                    }
-                  },
-                  child: Hero(
-                    tag: heroTag,
-                    child: (!kIsWeb && att.localPath != null && File(att.localPath!).existsSync())
-                        ? Image.file(File(att.localPath!), fit: BoxFit.cover)
-                        : AuthImage(url: att.fileUrl ?? '', fit: BoxFit.cover),
+                              // If edited photo was sent to chat from the viewer, close gallery so user returns to chat
+                              if (sent == true && mounted) {
+                                Navigator.pop(context);
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               );
@@ -963,43 +981,48 @@ class _SharedMediaScreenState extends State<SharedMediaScreen> {
         icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 18),
         onPressed: () => Navigator.pop(context),
       ),
-      body: Column(
-        children: [
-          // Горизонтальные вкладки
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: AppSpacing.base),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _buildTabChip('Фото', 0),
-                  _buildTabChip('Файлы', 1),
-                  _buildTabChip('Ссылки', 2),
-                  _buildTabChip('Голосовые', 3),
-                  _buildTabChip('Геолокация', 4),
-                ],
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: Column(
+            children: [
+              // Горизонтальные вкладки
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: AppSpacing.base),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _buildTabChip('Фото', 0),
+                      _buildTabChip('Файлы', 1),
+                      _buildTabChip('Ссылки', 2),
+                      _buildTabChip('Голосовые', 3),
+                      _buildTabChip('Геолокация', 4),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ),
-          // Контент вкладки
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: _onRefresh,
-              color: AppColors.primaryLight,
-              child: PageView(
-                controller: _pageController,
-                physics: const NeverScrollableScrollPhysics(),
-                children: [
-                  KeepAliveWrapper(child: _buildPhotosTab()),
-                  KeepAliveWrapper(child: _buildFilesTab()),
-                  KeepAliveWrapper(child: _buildLinksTab()),
-                  KeepAliveWrapper(child: _buildVoiceTab()),
-                  KeepAliveWrapper(child: _buildLocationsTab()),
-                ],
+              // Контент вкладки
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: _onRefresh,
+                  color: AppColors.primaryLight,
+                  child: PageView(
+                    controller: _pageController,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: [
+                      KeepAliveWrapper(child: _buildPhotosTab()),
+                      KeepAliveWrapper(child: _buildFilesTab()),
+                      KeepAliveWrapper(child: _buildLinksTab()),
+                      KeepAliveWrapper(child: _buildVoiceTab()),
+                      KeepAliveWrapper(child: _buildLocationsTab()),
+                    ],
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

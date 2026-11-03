@@ -7,6 +7,24 @@ import 'dart:ui_web' as ui_web;
 import 'package:flutter/material.dart';
 
 Future<Uint8List?> extractWebImageBytes(String url) async {
+  // 1. Попытка прямой загрузки ArrayBuffer через HttpRequest браузера
+  try {
+    final req = await html.HttpRequest.request(
+      url,
+      responseType: 'arraybuffer',
+    );
+    if (req.status == 200 && req.response != null) {
+      final buffer = req.response as ByteBuffer;
+      final bytes = Uint8List.view(buffer);
+      if (bytes.isNotEmpty) {
+        return bytes;
+      }
+    }
+  } catch (xhrErr) {
+    debugPrint('extractWebImageBytes HttpRequest failed: $xhrErr');
+  }
+
+  // 2. Попытка извлечения через HTML Canvas
   try {
     final completer = Completer<Uint8List?>();
     final img = html.ImageElement();

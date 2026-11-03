@@ -163,15 +163,48 @@ class UploadService {
           : '${ApiClient.baseUrl}${fileUrl.startsWith('/') ? '' : '/'}$fileUrl';
 
       if (kIsWeb) {
-        // Проверяем, является ли файл статическим ресурсом бэкенда (/static/ или /uploads/)
-        final uri = Uri.tryParse(fullUrl);
-        final isBackendStatic = uri != null &&
-            (uri.path.startsWith('/static/') ||
-             uri.path.startsWith('/uploads/') ||
-             fullUrl.contains('/static/') ||
-             fullUrl.contains('/uploads/'));
+        // 1. Прямое скачивание статических файлов и вложений по URL
+        try {
+          final response = await _apiClient.dio.get<dynamic>(
+            fullUrl,
+            options: Options(
+              responseType: ResponseType.bytes,
+              headers: {'Accept': '*/*'},
+            ),
+            onReceiveProgress: onProgress,
+          );
+          final bytes = _extractBytes(response.data);
+          if (bytes.isNotEmpty) {
+            return bytes;
+          }
+        } catch (dioErr) {
+          debugPrint('⚠️ [UploadService] direct _apiClient.dio download failed: $dioErr');
+        }
 
-        if (isBackendStatic) {
+        // 2. Скачивание через чистый webDio без специфических заголовков
+        try {
+          final webDio = Dio(BaseOptions(
+            connectTimeout: const Duration(seconds: 25),
+            receiveTimeout: const Duration(seconds: 40),
+          ));
+          final response = await webDio.get<dynamic>(
+            fullUrl,
+            options: Options(
+              responseType: ResponseType.bytes,
+            ),
+            onReceiveProgress: onProgress,
+          );
+          final bytes = _extractBytes(response.data);
+          if (bytes.isNotEmpty) {
+            return bytes;
+          }
+        } catch (webDioErr) {
+          debugPrint('⚠️ [UploadService] webDio download failed: $webDioErr');
+        }
+
+        // 3. Fallback: эндпоинт /upload/download только если прямое скачивание не сработало
+        final uri = Uri.tryParse(fullUrl);
+        if (uri != null && uri.path.startsWith('/static/photos/')) {
           final downloadPath = uri.path.startsWith('/') ? uri.path : '/${uri.path}';
           try {
             final response = await _apiClient.dio.get<dynamic>(
@@ -187,46 +220,10 @@ class UploadService {
               return bytes;
             }
           } catch (e) {
-            debugPrint('⚠️ [UploadService] /upload/download ($downloadPath) failed: $e');
-            if (uri.hasQuery) {
-              try {
-                final fullPathWithQuery = '$downloadPath?${uri.query}';
-                final response = await _apiClient.dio.get<dynamic>(
-                  '/upload/download',
-                  queryParameters: {'url': fullPathWithQuery},
-                  options: Options(
-                    responseType: ResponseType.bytes,
-                  ),
-                  onReceiveProgress: onProgress,
-                );
-                final bytes = _extractBytes(response.data);
-                if (bytes.isNotEmpty) {
-                  return bytes;
-                }
-              } catch (e2) {
-                debugPrint('⚠️ [UploadService] /upload/download with query failed: $e2');
-              }
-            }
+            debugPrint('⚠️ [UploadService] fallback /upload/download failed: $e');
           }
         }
 
-        // Прямое скачивание через webDio
-        final webDio = Dio(BaseOptions(
-          connectTimeout: const Duration(seconds: 25),
-          receiveTimeout: const Duration(seconds: 40),
-        ));
-        final response = await webDio.get<dynamic>(
-          fullUrl,
-          options: Options(
-            responseType: ResponseType.bytes,
-            headers: {},
-          ),
-          onReceiveProgress: onProgress,
-        );
-        final bytes = _extractBytes(response.data);
-        if (bytes.isNotEmpty) {
-          return bytes;
-        }
         return [];
       }
 
@@ -243,9 +240,16 @@ class UploadService {
         final bytes = await tempFile.readAsBytes();
         return bytes;
       } catch (nativeErr) {
-        debugPrint('⚠️ [UploadService] native download failed: $nativeErr, trying /upload/download...');
+        debugPrint('⚠️ [UploadService] native download failed: $nativeErr, checking /upload/download...');
         final uri = Uri.tryParse(fullUrl);
-        if (uri != null && (uri.path.startsWith('/static/') || uri.path.startsWith('/uploads/'))) {
+        final isPhotoAsset = uri != null &&
+            (uri.path.startsWith('/static/photos/') ||
+             fullUrl.contains('/static/photos/') ||
+             uri.path.toLowerCase().endsWith('.jpg') ||
+             uri.path.toLowerCase().endsWith('.jpeg') ||
+             uri.path.toLowerCase().endsWith('.png') ||
+             uri.path.toLowerCase().endsWith('.webp'));
+        if (isPhotoAsset) {
           final downloadPath = uri.path.startsWith('/') ? uri.path : '/${uri.path}';
           final response = await _apiClient.dio.get<dynamic>(
             '/upload/download',

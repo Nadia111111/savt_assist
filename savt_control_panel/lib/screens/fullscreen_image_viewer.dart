@@ -203,8 +203,13 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Ошибка скачивания: $e'),
-              backgroundColor: AppColors.error),
+            content: Text('Ошибка скачивания: $e',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+            width: kIsWeb ? 420 : null,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
         );
       }
     } finally {
@@ -220,8 +225,16 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
       if (!mounted) return;
       if (bytes == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Не удалось загрузить данные изображения для редактирования')),
+          SnackBar(
+            content: const Text(
+              'Не удалось загрузить данные изображения для редактирования',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+            width: kIsWeb ? 420 : null,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
         );
         return;
       }

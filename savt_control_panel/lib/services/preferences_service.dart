@@ -104,15 +104,15 @@ class PreferencesService {
     chatListModeNotifier.value = mode;
   }
 
-  // Chat Name Color
-  static String getNameColor() => _prefs.getString('chat_name_color') ?? '#10B981';
+  // Chat Name Color ('#3B82F6' - vibrant blue default)
+  static String getNameColor() => _prefs.getString('chat_name_color') ?? '#3B82F6';
   static Future<void> saveNameColor(String colorHex) async {
     await _prefs.setString('chat_name_color', colorHex);
     nameColorNotifier.value = colorHex;
   }
 
-  // Chat Theme Preset
-  static String getChatThemePreset() => _prefs.getString('chat_theme_preset') ?? 'purple';
+  // Chat Theme Preset ('classic' - SAVT Синяя default)
+  static String getChatThemePreset() => _prefs.getString('chat_theme_preset') ?? 'classic';
   static Future<void> saveChatThemePreset(String preset) async {
     await _prefs.setString('chat_theme_preset', preset);
     chatThemeNotifier.value = preset;
