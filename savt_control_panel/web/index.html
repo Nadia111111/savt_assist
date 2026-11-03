@@ -38,8 +38,7 @@
   <script>
     window.addEventListener('load', function(ev) {
       // Download main.dart.js
-      var loaderFn = (_flutter.loader.load || _flutter.loader.loadEntrypoint).bind(_flutter.loader);
-      loaderFn({
+      _flutter.loader.loadEntrypoint({
         serviceWorker: {
           serviceWorkerVersion: null,
         },
