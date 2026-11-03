@@ -25,7 +25,7 @@ class TelegramDoodlePattern extends StatelessWidget {
           children: [
             CustomPaint(
               painter: _SavtMonogramPainter(
-                color: doodleColor.withValues(alpha: opacity),
+                color: doodleColor.withOpacity(opacity.clamp(0.0, 1.0)),
               ),
             ),
             if (child != null) child!,
@@ -43,7 +43,7 @@ class _SavtMonogramPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (color.a <= 0 || size.width <= 0 || size.height <= 0) return;
+    if (color.alpha <= 0 || size.width <= 0 || size.height <= 0) return;
 
     canvas.save();
     canvas.clipRect(Offset.zero & size);

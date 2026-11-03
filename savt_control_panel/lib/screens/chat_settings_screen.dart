@@ -51,6 +51,14 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
   @override
   void initState() {
     super.initState();
+    try {
+      _bubbleRadius = PreferencesService.getBubbleRadius();
+      _fontSize = PreferencesService.getFontSize();
+      _chatListMode = PreferencesService.getChatListMode();
+      _nameColorHex = PreferencesService.getNameColor();
+      _activePresetId = PreferencesService.getChatThemePreset();
+      _wallpaperUrl = PreferencesService.getWallpaperUrl();
+    } catch (_) {}
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         AppNavState.instance.pushConfig(
@@ -648,11 +656,7 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
           ),
         ),
       ),
-      body: _isLoading
-          ? Center(
-              child: CircularProgressIndicator(color: brandPrimary),
-            )
-          : Align(
+      body: Align(
               alignment: Alignment.topCenter,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 600),
