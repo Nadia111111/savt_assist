@@ -34,7 +34,7 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
   Duration get _effectiveDuration =>
       widget.duration ??
       (kIsWeb
-          ? const Duration(milliseconds: 30000)
+          ? const Duration(milliseconds: 50000)
           : const Duration(milliseconds: 3200));
 
   @override
