@@ -1,4 +1,6 @@
 import 'dart:math';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -7,6 +9,7 @@ class VoiceMessagePlayer extends StatefulWidget {
   final String? voiceUrl;
   final String? voicePath;
   final bool isOwn;
+  final Duration? initialDuration;
   final String? initialTranscription;
   final Future<String?> Function()? onTranscribe;
   final Future<String?> Function()? onGetLocalAudio;
@@ -21,6 +24,7 @@ class VoiceMessagePlayer extends StatefulWidget {
     this.voiceUrl,
     this.voicePath,
     required this.isOwn,
+    this.initialDuration,
     this.initialTranscription,
     this.onTranscribe,
     this.onGetLocalAudio,
@@ -56,7 +60,10 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
     _cachedLocalPath = widget.voicePath;
     _transcriptionText = widget.initialTranscription;
     _showTranscription = _transcriptionText != null && _transcriptionText!.isNotEmpty;
-    
+    if (widget.initialDuration != null && widget.initialDuration! > Duration.zero) {
+      _duration = widget.initialDuration!;
+    }
+
     // Генерируем красивую гладкую волну в форме холма (bell curve) с легким шумом
     final random = Random();
     const count = 32;
@@ -71,6 +78,12 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
     _initPlayer();
   }
 
+  String _resolveUrl(String url) {
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    const base = 'https://helper.savt.by';
+    return '${base.endsWith('/') ? base.substring(0, base.length - 1) : base}/${url.startsWith('/') ? url.substring(1) : url}';
+  }
+
   Future<void> _initPlayer() async {
     _audioPlayer.onPlayerStateChanged.listen((state) {
       if (mounted) {
@@ -81,7 +94,7 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
     });
 
     _audioPlayer.onDurationChanged.listen((newDuration) {
-      if (mounted) {
+      if (mounted && newDuration > Duration.zero) {
         setState(() {
           _duration = newDuration;
         });
@@ -106,13 +119,41 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
     });
 
     try {
-      if (widget.voicePath != null) {
-        await _audioPlayer.setSource(DeviceFileSource(widget.voicePath!));
+      final local = widget.voicePath ?? _cachedLocalPath;
+      if (!kIsWeb && local != null && File(local).existsSync()) {
+        await _audioPlayer.setSource(DeviceFileSource(local));
+        final d = await _audioPlayer.getDuration();
+        if (d != null && d > Duration.zero && mounted) {
+          setState(() => _duration = d);
+        }
       } else if (widget.voiceUrl != null) {
-        await _audioPlayer.setSource(UrlSource(widget.voiceUrl!));
+        final fullUrl = _resolveUrl(widget.voiceUrl!);
+        await _audioPlayer.setSource(UrlSource(fullUrl));
+        final d = await _audioPlayer.getDuration();
+        if (d != null && d > Duration.zero && mounted) {
+          setState(() => _duration = d);
+        }
       }
     } catch (e) {
       debugPrint('Ошибка инициализации аудио: $e');
+    }
+
+    // Фоновая подгрузка локального файла для моментального получения длительности и быстрого старта
+    if ((_duration == Duration.zero || _cachedLocalPath == null) && widget.onGetLocalAudio != null) {
+      widget.onGetLocalAudio!().then((p) async {
+        if (p != null && mounted) {
+          _cachedLocalPath = p;
+          try {
+            if (!kIsWeb) {
+              await _audioPlayer.setSource(DeviceFileSource(p));
+              final d = await _audioPlayer.getDuration();
+              if (d != null && d > Duration.zero && mounted) {
+                setState(() => _duration = d);
+              }
+            }
+          } catch (_) {}
+        }
+      });
     }
   }
 
@@ -241,7 +282,7 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 240,
+          constraints: const BoxConstraints(minWidth: 230, maxWidth: 260),
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           decoration: BoxDecoration(
             color: widget.transparentBackground
@@ -322,7 +363,6 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
                     ),
                     const SizedBox(height: 4),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
                           '${_isPlaying ? _formatDuration(_position) : _formatDuration(displayDuration)} ●',
@@ -332,79 +372,67 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        Row(
-                          children: [
-                            if (widget.onTranscribe != null)
-                              GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: _handleTranscribe,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: _showTranscription 
-                                        ? (widget.isOwn ? Colors.white.withValues(alpha: 0.25) : activeColor.withValues(alpha: 0.15))
-                                        : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.subtitles_rounded,
-                                        size: 13,
-                                        color: _showTranscription ? colorOnPrimary : colorVariant,
-                                      ),
-                                      const SizedBox(width: 2),
-                                      Text(
-                                        'А',
-                                        style: TextStyle(
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.bold,
-                                          color: _showTranscription ? colorOnPrimary : colorVariant,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                        const Spacer(),
+                        if (widget.onTranscribe != null) ...[
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _handleTranscribe,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: _showTranscription 
+                                    ? (widget.isOwn ? Colors.white.withValues(alpha: 0.25) : activeColor.withValues(alpha: 0.15))
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(6),
                               ),
-                            const SizedBox(width: 8),
-                            GestureDetector(
-                              onTap: _togglePlaybackSpeed,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: _playbackSpeed > 1.0 
-                                      ? (widget.isOwn ? Colors.white.withValues(alpha: 0.25) : activeColor.withValues(alpha: 0.15))
-                                      : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  '${_playbackSpeed == 1.0 ? "1" : _playbackSpeed == 1.5 ? "1.5" : "2"}x',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: _playbackSpeed > 1.0 ? colorOnPrimary : colorVariant,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.subtitles_rounded,
+                                    size: 13,
+                                    color: _showTranscription ? colorOnPrimary : colorVariant,
                                   ),
+                                  const SizedBox(width: 2),
+                                  Text(
+                                    'А',
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                      color: _showTranscription ? colorOnPrimary : colorVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                        ],
+                        if (_isPlaying || _playbackSpeed > 1.0) ...[
+                          GestureDetector(
+                            onTap: _togglePlaybackSpeed,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: _playbackSpeed > 1.0 
+                                    ? (widget.isOwn ? Colors.white.withValues(alpha: 0.25) : activeColor.withValues(alpha: 0.15))
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                '${_playbackSpeed == 1.0 ? "1" : _playbackSpeed == 1.5 ? "1.5" : "2"}x',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: _playbackSpeed > 1.0 ? colorOnPrimary : colorVariant,
                                 ),
                               ),
                             ),
-                            if (widget.onDownload != null) ...[
-                              const SizedBox(width: 8),
-                              GestureDetector(
-                                onTap: widget.onDownload,
-                                child: Icon(
-                                  Icons.download,
-                                  size: 14,
-                                  color: colorVariant,
-                                ),
-                              ),
-                            ],
-                            if (widget.trailingBottom != null) ...[
-                              const SizedBox(width: 8),
-                              widget.trailingBottom!,
-                            ],
-                          ],
-                        ),
+                          ),
+                          const SizedBox(width: 4),
+                        ],
+                        if (widget.trailingBottom != null)
+                          widget.trailingBottom!,
                       ],
                     ),
                   ],
