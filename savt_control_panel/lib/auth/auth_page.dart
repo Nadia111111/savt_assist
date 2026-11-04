@@ -22,7 +22,8 @@ class AuthPage extends StatefulWidget {
   State<AuthPage> createState() => _AuthPageState();
 }
 
-class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
+class _AuthPageState extends State<AuthPage>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   final TextEditingController _fullNameController = TextEditingController();
   final TextEditingController _orgNameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
@@ -44,6 +45,9 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
   final FocusNode _contactPhoneFocusNode = FocusNode();
 
   String? _registrationToken;
+  bool _isWaitingForCode = false;
+  Map<String, dynamic>? _lastStartResult;
+  bool _isRestoringDraft = false;
 
   bool _isLoginMode = true;
   bool _isPasswordVisible = false;
@@ -126,6 +130,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     AppNavState.instance.setRouteExcluded(true);
     AppNavState.instance.pushConfig(
       id: this,
@@ -139,9 +144,19 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
     _confirmPasswordController.addListener(_onFormFieldChanged);
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      if (!_isLoginMode && !_isRestoringDraft) {
+        _saveRegistrationDraft();
+      }
+    }
+  }
+
   void _onFormFieldChanged() {
-    if (!_isLoginMode) {
-      _saveRegistrationDraft(isWaitingCode: false);
+    if (!_isLoginMode && !_isRestoringDraft) {
+      _saveRegistrationDraft();
     }
   }
 
@@ -153,10 +168,21 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
     }
   }
 
-  Future<void> _saveRegistrationDraft(
-      {bool isWaitingCode = false, Map<String, dynamic>? startResult}) async {
+  Future<void> _saveRegistrationDraft({
+    bool? isWaitingCode,
+    Map<String, dynamic>? startResult,
+    String? currentCode,
+  }) async {
+    if (_isRestoringDraft) return;
     try {
       final prefs = await _getPrefs();
+      final waiting = isWaitingCode ?? _isWaitingForCode;
+      final result = startResult ?? _lastStartResult;
+      final resultToSave =
+          result != null ? Map<String, dynamic>.from(result) : null;
+      if (resultToSave != null && !resultToSave.containsKey('_saved_at')) {
+        resultToSave['_saved_at'] = DateTime.now().millisecondsSinceEpoch;
+      }
       final data = <String, dynamic>{
         'full_name': _fullNameController.text,
         'user_type': _userType,
@@ -166,8 +192,12 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
         'password': _passwordController.text,
         'confirm_password': _confirmPasswordController.text,
         'registration_token': _registrationToken,
-        'is_waiting_code': isWaitingCode,
-        if (startResult != null) 'start_result': startResult,
+        'agree_to_policy': _agreeToPolicy,
+        'is_adult': _isAdult,
+        'is_waiting_code': waiting,
+        if (currentCode != null && currentCode.isNotEmpty)
+          'saved_code': currentCode,
+        if (resultToSave != null) 'start_result': resultToSave,
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       };
       await prefs.setString(_kRegDraftKey, jsonEncode(data));
@@ -179,6 +209,9 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
   Future<void> _clearRegistrationDraft({bool keepFields = false}) async {
     try {
       final prefs = await _getPrefs();
+      _isWaitingForCode = false;
+      _lastStartResult = null;
+      _registrationToken = null;
       if (keepFields) {
         final data = <String, dynamic>{
           'full_name': _fullNameController.text,
@@ -188,6 +221,8 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
           'country_code': _selectedCountryCode,
           'password': _passwordController.text,
           'confirm_password': _confirmPasswordController.text,
+          'agree_to_policy': _agreeToPolicy,
+          'is_adult': _isAdult,
           'registration_token': null,
           'is_waiting_code': false,
           'timestamp': DateTime.now().millisecondsSinceEpoch,
@@ -218,42 +253,71 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
               (data['full_name'] as String).isNotEmpty) ||
           (data['phone'] != null && (data['phone'] as String).isNotEmpty);
 
-      setState(() {
-        if (hasData) {
-          _isLoginMode = false;
-        }
-        if (data['full_name'] != null)
-          _fullNameController.text = data['full_name'];
-        if (data['user_type'] != null) _userType = data['user_type'];
-        if (data['org_name'] != null)
-          _orgNameController.text = data['org_name'];
-        if (data['phone'] != null) _contactPhoneController.text = data['phone'];
-        if (data['country_code'] != null)
-          _selectedCountryCode = data['country_code'];
-        if (data['password'] != null)
-          _passwordController.text = data['password'];
-        if (data['confirm_password'] != null)
-          _confirmPasswordController.text = data['confirm_password'];
-        if (data['registration_token'] != null)
-          _registrationToken = data['registration_token'];
-      });
+      _isRestoringDraft = true;
+      try {
+        setState(() {
+          if (hasData) {
+            _isLoginMode = false;
+          }
+          if (data['full_name'] != null) {
+            _fullNameController.text = data['full_name'];
+          }
+          if (data['user_type'] != null) _userType = data['user_type'];
+          if (data['org_name'] != null) {
+            _orgNameController.text = data['org_name'];
+          }
+          if (data['phone'] != null) {
+            _contactPhoneController.text = data['phone'];
+          }
+          if (data['country_code'] != null) {
+            _selectedCountryCode = data['country_code'];
+          }
+          if (data['password'] != null) {
+            _passwordController.text = data['password'];
+          }
+          if (data['confirm_password'] != null) {
+            _confirmPasswordController.text = data['confirm_password'];
+          }
+          if (data['agree_to_policy'] != null) {
+            _agreeToPolicy = data['agree_to_policy'] == true;
+          }
+          if (data['is_adult'] != null) {
+            _isAdult = data['is_adult'] == true;
+          }
+          if (data['registration_token'] != null) {
+            _registrationToken = data['registration_token'];
+          }
+          _isWaitingForCode = data['is_waiting_code'] == true;
+          final dynamic startResultRaw = data['start_result'];
+          _lastStartResult = startResultRaw is Map
+              ? Map<String, dynamic>.from(startResultRaw)
+              : null;
+        });
+      } finally {
+        _isRestoringDraft = false;
+      }
 
-      final bool isWaitingCode = data['is_waiting_code'] == true;
-      final dynamic startResultRaw = data['start_result'];
-      final Map<String, dynamic>? startResult = startResultRaw is Map
-          ? Map<String, dynamic>.from(startResultRaw)
-          : null;
+      final String? savedCode = data['saved_code'];
 
-      if (isWaitingCode && _registrationToken != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_isWaitingForCode && _registrationToken != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
           if (!mounted) return;
-          final dialogData = startResult ??
+          final dialogData = _lastStartResult ??
               {
                 'registration_token': _registrationToken,
                 'deep_link': null,
               };
-          _showCodeVerificationDialog(dialogData,
-              rememberMe: _rememberMe, initialShowCodeInput: true);
+          final success = await _showCodeVerificationDialog(
+            dialogData,
+            rememberMe: _rememberMe,
+            initialShowCodeInput: true,
+            initialCode: savedCode,
+          );
+          if (success == true && mounted) {
+            await _clearRegistrationDraft();
+            _showSuccessSnackBar('Регистрация успешна!');
+            Navigator.pushReplacementNamed(context, '/home');
+          }
         });
       }
     } catch (e) {
@@ -315,13 +379,17 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
       if (_registrationToken == null) {
         throw Exception('Не удалось получить токен регистрации');
       }
+      _isWaitingForCode = true;
+      _lastStartResult = result;
       await _saveRegistrationDraft(isWaitingCode: true, startResult: result);
       final success =
           await _showCodeVerificationDialog(result, rememberMe: _rememberMe);
-      if (success) {
+      if (success == true) {
         await _clearRegistrationDraft();
-        _showSuccessSnackBar('Регистрация успешна!');
-        setState(() => _isLoginMode = true);
+        if (mounted) {
+          _showSuccessSnackBar('Регистрация успешна!');
+          Navigator.pushReplacementNamed(context, '/home');
+        }
       }
     } catch (e) {
       _showErrorSnackBar(e.toString());
@@ -330,16 +398,81 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
     }
   }
 
+  Future<void> _launchTelegram(String url) async {
+    try {
+      final uri = Uri.parse(url);
+
+      // 1. Прямая попытка через кастомную схему tg:// (без перехода в браузер)
+      if (uri.scheme == 'tg') {
+        final launched = await launchUrl(
+          uri,
+          mode: LaunchMode.externalNonBrowserApplication,
+        );
+        if (launched) return;
+      } else if (uri.host == 't.me' || uri.host == 'telegram.me') {
+        final botUsername =
+            uri.pathSegments.isNotEmpty ? uri.pathSegments.first : '';
+        final startParam = uri.queryParameters['start'];
+        if (botUsername.isNotEmpty) {
+          final tgUri = Uri.parse(
+              'tg://resolve?domain=$botUsername${startParam != null && startParam.isNotEmpty ? '&start=$startParam' : ''}');
+          try {
+            final launched = await launchUrl(
+              tgUri,
+              mode: LaunchMode.externalNonBrowserApplication,
+            );
+            if (launched) return;
+          } catch (_) {}
+        }
+      }
+
+      // 2. Пробуем открыть через externalNonBrowserApplication
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalNonBrowserApplication,
+      );
+      if (launched) return;
+
+      // 3. Fallback: обычный браузер
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      try {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      } catch (e) {
+        _showErrorSnackBar('Не удалось открыть Telegram: $e');
+      }
+    }
+  }
+
   Future<bool> _showCodeVerificationDialog(Map<String, dynamic> startResult,
-      {bool rememberMe = false, bool initialShowCodeInput = false}) async {
-    final codeController = TextEditingController();
+      {bool rememberMe = false,
+      bool initialShowCodeInput = false,
+      String? initialCode}) async {
+    final codeController = TextEditingController(text: initialCode ?? '');
     final theme = Theme.of(context);
     String? currentDeepLink = startResult['deep_link'];
     bool showCodeInput = initialShowCodeInput || currentDeepLink == null;
+
     int resendSeconds = startResult['resend_after_seconds'] ?? 60;
-    bool canResend = false;
+    final int savedTimestamp = startResult['_saved_at'] as int? ?? 0;
+    if (savedTimestamp > 0) {
+      final elapsed =
+          (DateTime.now().millisecondsSinceEpoch - savedTimestamp) ~/ 1000;
+      resendSeconds = (resendSeconds - elapsed).clamp(0, 3600);
+    }
+    bool canResend = resendSeconds <= 0;
     bool isSubmittingRequest = false;
     Timer? resendTimer;
+
+    void onCodeChanged() {
+      _saveRegistrationDraft(
+        isWaitingCode: true,
+        startResult: startResult,
+        currentCode: codeController.text,
+      );
+    }
+
+    codeController.addListener(onCodeChanged);
 
     Future<void> submitRegisterRequest(
         void Function(void Function()) setStateDialog) async {
@@ -359,6 +492,8 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
           contactPhone: phone,
         );
         resendTimer?.cancel();
+        _isWaitingForCode = false;
+        _lastStartResult = null;
         await _clearRegistrationDraft();
         if (mounted) {
           Navigator.pop(context, false);
@@ -398,7 +533,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
       });
     }
 
-    return await showDialog<bool>(
+    final bool? dialogResult = await showDialog<bool>(
           context: context,
           barrierDismissible: false,
           builder: (context) {
@@ -440,26 +575,14 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                         if (currentDeepLink != null) ...[
                           ElevatedButton.icon(
                             onPressed: () async {
+                              _isWaitingForCode = true;
+                              _lastStartResult = startResult;
                               await _saveRegistrationDraft(
                                   isWaitingCode: true,
-                                  startResult: startResult);
-                              try {
-                                final uri = Uri.parse(currentDeepLink!);
-                                final launched = await launchUrl(uri,
-                                    mode: LaunchMode
-                                        .externalNonBrowserApplication);
-                                if (!launched) {
-                                  await launchUrl(uri,
-                                      mode: LaunchMode.externalApplication);
-                                }
-                              } catch (_) {
-                                try {
-                                  await launchUrl(Uri.parse(currentDeepLink!),
-                                      mode: LaunchMode.externalApplication);
-                                } catch (e) {
-                                  _showErrorSnackBar(
-                                      'Не удалось открыть Telegram: $e');
-                                }
+                                  startResult: startResult,
+                                  currentCode: codeController.text);
+                              if (currentDeepLink != null) {
+                                await _launchTelegram(currentDeepLink!);
                               }
                             },
                             icon: const Icon(Icons.open_in_new, size: 18),
@@ -480,6 +603,11 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                             setStateDialog(() {
                               showCodeInput = true;
                             });
+                            _saveRegistrationDraft(
+                              isWaitingCode: true,
+                              startResult: startResult,
+                              currentCode: codeController.text,
+                            );
                           },
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(
@@ -531,12 +659,14 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                       TextButton(
                         onPressed: () async {
                           resendTimer?.cancel();
+                          _isWaitingForCode = false;
+                          _lastStartResult = null;
                           await _clearRegistrationDraft(keepFields: true);
                           if (context.mounted) Navigator.pop(context, false);
                         },
                         style: TextButton.styleFrom(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 4),
+                                horizontal: 12, vertical: 4),
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
@@ -640,6 +770,18 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                                             'Код отправлен повторно в Telegram.');
                                       }
                                     });
+                                    _lastStartResult = {
+                                      ...?_lastStartResult,
+                                      'deep_link': currentDeepLink,
+                                      'resend_after_seconds': resendSeconds,
+                                      '_saved_at':
+                                          DateTime.now().millisecondsSinceEpoch,
+                                    };
+                                    await _saveRegistrationDraft(
+                                      isWaitingCode: true,
+                                      startResult: _lastStartResult,
+                                      currentCode: codeController.text,
+                                    );
                                     if (currentDeepLink == null) {
                                       startTimer(setStateDialog);
                                     }
@@ -677,6 +819,8 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                     TextButton(
                       onPressed: () async {
                         resendTimer?.cancel();
+                        _isWaitingForCode = false;
+                        _lastStartResult = null;
                         await _clearRegistrationDraft(keepFields: true);
                         if (context.mounted) Navigator.pop(context, false);
                       },
@@ -697,6 +841,8 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                               _registrationToken!, code,
                               rememberMe: rememberMe);
                           resendTimer?.cancel();
+                          _isWaitingForCode = false;
+                          _lastStartResult = null;
                           await _clearRegistrationDraft();
                           if (context.mounted) Navigator.pop(context, true);
                         } catch (e) {
@@ -705,6 +851,8 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                               _showErrorSnackBar(
                                   'Регистрация истекла. Начните регистрацию заново.');
                               resendTimer?.cancel();
+                              _isWaitingForCode = false;
+                              _lastStartResult = null;
                               await _clearRegistrationDraft(keepFields: true);
                               if (context.mounted)
                                 Navigator.pop(context, false);
@@ -742,8 +890,11 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
               },
             );
           },
-        ) ??
-        false;
+        );
+    resendTimer?.cancel();
+    codeController.removeListener(onCodeChanged);
+    codeController.dispose();
+    return dialogResult ?? false;
   }
 
   Future<void> _handleLogin() async {
@@ -935,6 +1086,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
 
     if (result != null) {
       setState(() => _agreeToPolicy = result);
+      _onFormFieldChanged();
     }
   }
 
@@ -951,6 +1103,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _fullNameController.removeListener(_onFormFieldChanged);
     _orgNameController.removeListener(_onFormFieldChanged);
     _contactPhoneController.removeListener(_onFormFieldChanged);
@@ -1342,7 +1495,10 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
           const SizedBox(height: 12),
           _buildCheckbox(
               value: _isAdult,
-              onChanged: (val) => setState(() => _isAdult = val ?? false),
+              onChanged: (val) {
+                setState(() => _isAdult = val ?? false);
+                _onFormFieldChanged();
+              },
               title: 'Я подтверждаю, что мне 16 лет или более'),
           const SizedBox(height: 20),
           _buildSubmitButton(
@@ -1371,14 +1527,20 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                   title: 'Частное лицо',
                   icon: Icons.person_outline,
                   isActive: _userType == 'private',
-                  onTap: () => setState(() => _userType = 'private'))),
+                  onTap: () {
+                    setState(() => _userType = 'private');
+                    _onFormFieldChanged();
+                  })),
           const SizedBox(width: 12),
           Expanded(
               child: _buildUserTypeButton(
                   title: 'Организация',
                   icon: Icons.business_outlined,
                   isActive: _userType == 'organization',
-                  onTap: () => setState(() => _userType = 'organization'))),
+                  onTap: () {
+                    setState(() => _userType = 'organization');
+                    _onFormFieldChanged();
+                  })),
         ])
             .animate()
             .fadeIn(delay: const Duration(milliseconds: 200))
@@ -1470,7 +1632,10 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                     ]),
                   ))
               .toList(),
-          onChanged: (value) => setState(() => _selectedCountryCode = value!),
+          onChanged: (value) {
+            setState(() => _selectedCountryCode = value!);
+            _onFormFieldChanged();
+          },
         ),
       ),
     );

@@ -2,6 +2,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'dart:async';
+import 'dart:ui';
 import '../services/file_save_helper.dart';
 import '../services/api_client.dart';
 import 'package:open_file/open_file.dart';
@@ -39,6 +40,7 @@ import '../widgets/telegram_doodle_pattern.dart';
 import '../main.dart';
 import '../utils/web_paste_listener.dart';
 import '../utils/mobile_clipboard_helper.dart';
+import '../widgets/ios_emoji_picker.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -98,10 +100,16 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Timer? _pollingTimer;
   int _pollingCycle = 0;
+  bool _showEmojiPicker = false;
 
   @override
   void initState() {
     super.initState();
+    _focusNode.addListener(() {
+      if (_focusNode.hasFocus && _showEmojiPicker) {
+        setState(() => _showEmojiPicker = false);
+      }
+    });
     if (kIsWeb) {
       try {
         BrowserContextMenu.disableContextMenu();
@@ -976,7 +984,7 @@ Future<void> _deleteSelectedMessages() async {
     final double fontSize = _chatSettings['font_size'] != null 
         ? (double.tryParse(_chatSettings['font_size'].toString()) ?? PreferencesService.getFontSize())
         : PreferencesService.getFontSize();
-    
+
     if (matches.isEmpty) {
       return Text(
         text,
@@ -2733,8 +2741,8 @@ Future<void> _deleteSelectedMessages() async {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final isDesktop = constraints.maxWidth >= 600;
-            final messageMaxWidth = isDesktop ? 480.0 : MediaQuery.of(context).size.width * 0.8;
-            final horizontalPadding = isDesktop ? 24.0 : 16.0;
+            final messageMaxWidth = isDesktop ? 480.0 : MediaQuery.of(context).size.width * 0.85;
+            final horizontalPadding = isDesktop ? 12.0 : 6.0;
 
             final wallpaperUrl = _chatSettings['wallpaper_url']?.toString() ?? '';
             final presetId = _chatSettings['theme_preset']?.toString() ??
@@ -2765,7 +2773,7 @@ Future<void> _deleteSelectedMessages() async {
                         // ignore: deprecated_member_use
                         cacheExtent: 250, reverse: true,
                         controller: _scrollController,
-                        padding: EdgeInsets.all(horizontalPadding),
+                        padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 6.0),
                         itemCount: _messages.length,
                         itemBuilder: (context, index) {
                           final msg = _messages[index];
@@ -2892,49 +2900,306 @@ _buildSelectionActionBar(theme),
     }
   }
 
-Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
-     final isHighlighted = msg.id == _highlightedMessageId;
-     final isSelected = _selectedMessages.contains(msg.id);
-     final customOwnColor = _parseColor(_chatSettings['own_bubble_color']);
-     final customOtherColor = _parseColor(_chatSettings['other_bubble_color']);
-     final customBotColor = _parseColor(_chatSettings['bot_bubble_color']);
+  bool _isImageAttachment(ChatAttachment att) {
+    final path = (att.fileUrl ?? att.localPath ?? '').toLowerCase();
+    final cleanPath = path.split('?').first;
+    final name = att.fileName.toLowerCase();
+    return cleanPath.endsWith('.jpg') ||
+        cleanPath.endsWith('.png') ||
+        cleanPath.endsWith('.jpeg') ||
+        cleanPath.endsWith('.gif') ||
+        cleanPath.endsWith('.webp') ||
+        name.endsWith('.jpg') ||
+        name.endsWith('.jpeg') ||
+        name.endsWith('.png') ||
+        name.endsWith('.gif') ||
+        name.endsWith('.webp') ||
+        (att.mimeType?.startsWith('image/') ?? false);
+  }
 
-     final myNameColorHex = _chatSettings['name_color']?.toString() ??
-         PreferencesService.getNameColor();
-     final myNameColor = ChatNameColor.parse(myNameColorHex);
+  bool _isAudioAttachment(ChatAttachment att) {
+    final path = (att.fileUrl ?? att.localPath ?? '').toLowerCase();
+    final cleanPath = path.split('?').first;
+    final name = att.fileName.toLowerCase();
+    return cleanPath.endsWith('.mp3') ||
+        cleanPath.endsWith('.m4a') ||
+        cleanPath.endsWith('.wav') ||
+        cleanPath.endsWith('.ogg') ||
+        cleanPath.endsWith('.aac') ||
+        cleanPath.endsWith('.amr') ||
+        cleanPath.endsWith('.flac') ||
+        name.endsWith('.mp3') ||
+        name.endsWith('.m4a') ||
+        name.endsWith('.wav') ||
+        name.endsWith('.ogg') ||
+        name.endsWith('.aac') ||
+        name.endsWith('.amr') ||
+        name.endsWith('.flac') ||
+        (att.mimeType?.startsWith('audio/') ?? false);
+  }
 
-     final presetId = _chatSettings['theme_preset']?.toString() ??
-         PreferencesService.getChatThemePreset();
-     final activePreset = ChatThemePreset.getById(presetId);
+  bool _isVideoAttachment(ChatAttachment att) {
+    final path = (att.fileUrl ?? att.localPath ?? '').toLowerCase();
+    final cleanPath = path.split('?').first;
+    final name = att.fileName.toLowerCase();
+    return cleanPath.endsWith('.mp4') ||
+        cleanPath.endsWith('.mov') ||
+        cleanPath.endsWith('.avi') ||
+        cleanPath.endsWith('.mkv') ||
+        name.endsWith('.mp4') ||
+        name.endsWith('.mov') ||
+        name.endsWith('.avi') ||
+        name.endsWith('.mkv') ||
+        (att.mimeType?.startsWith('video/') ?? false);
+  }
 
-     final isBot = !msg.isOwn && (msg.senderId == null || msg.senderId == 0);
+  Widget _buildTimeRow(ChatMessage msg, Color timeColor, Color textColor) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        if (msg.isPending) ...[
+          Padding(
+            padding: const EdgeInsets.only(right: 3),
+            child: Text(
+              'Ожидает отправки',
+              style: TextStyle(
+                fontSize: 10,
+                color: timeColor,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+        ] else if (msg.isEdited) ...[
+          Padding(
+            padding: const EdgeInsets.only(right: 3),
+            child: Text(
+              'отредактировано',
+              style: TextStyle(
+                fontSize: 10,
+                color: timeColor,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+        ],
+        Text(
+          msg.time,
+          style: TextStyle(
+            fontSize: 11,
+            color: timeColor,
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+        if (msg.isOwn) ...[
+          const SizedBox(width: 3),
+          Icon(
+            msg.isPending
+                ? Icons.access_time
+                : (msg.isRead ? Icons.done_all : Icons.done),
+            size: 13,
+            color: msg.isPending
+                ? timeColor
+                : (msg.isRead ? (textColor == Colors.white ? Colors.cyanAccent : Colors.blue) : timeColor),
+          ),
+        ],
+      ],
+    );
+  }
 
-     final bubbleColor = msg.isOwn
-         ? (msg.isPending ? Colors.grey.shade500 : (customOwnColor ?? activePreset.ownBubbleGradient[0]))
-         : (isBot
-             ? (customBotColor ?? Colors.grey.shade100)
-             : (customOtherColor ?? theme.colorScheme.surfaceContainerHighest));
+  Widget _buildFileAttachmentCard(ChatAttachment att, ChatMessage msg, ThemeData theme, Color textColor, Color iconColor, Color timeColor) {
+    final ext = att.fileName.contains('.') ? att.fileName.split('.').last.toUpperCase() : 'FILE';
+    final sizeStr = att.fileSizeBytes != null && att.fileSizeBytes! > 0
+        ? (att.fileSizeBytes! < 1024 * 1024
+            ? '${(att.fileSizeBytes! / 1024).toStringAsFixed(1).replaceAll('.', ',')} KB'
+            : '${(att.fileSizeBytes! / (1024 * 1024)).toStringAsFixed(1).replaceAll('.', ',')} MB')
+        : (att.localPath != null && !kIsWeb && File(att.localPath!).existsSync()
+            ? '${(File(att.localPath!).lengthSync() / (1024 * 1024)).toStringAsFixed(1).replaceAll('.', ',')} MB'
+            : 'Файл');
+    final subtitle = '$sizeStr $ext';
 
-     final textColor = bubbleColor.computeLuminance() > 0.55 ? Colors.black87 : Colors.white;
-     final timeColor = textColor.withValues(alpha: 0.65);
+    return GestureDetector(
+      onTap: () => _downloadFile(att),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 210, maxWidth: 260),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 1),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.insert_drive_file_rounded,
+                  color: iconColor,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            att.fileName,
+                            style: TextStyle(
+                              color: textColor,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.more_vert, color: textColor.withValues(alpha: 0.85), size: 18),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          onPressed: () => _downloadFile(att),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          subtitle,
+                          style: TextStyle(
+                            color: textColor.withValues(alpha: 0.75),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                        if (msg.text.trim().isEmpty)
+                          _buildTimeRow(msg, timeColor, textColor),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-     final double bubbleRadius = (_chatSettings['bubble_radius'] is num
-         ? (_chatSettings['bubble_radius'] as num).toDouble()
-         : double.tryParse(_chatSettings['bubble_radius']?.toString() ?? '')) ??
-         PreferencesService.getBubbleRadius();
-     final double smallRadius = (bubbleRadius * 0.25).clamp(2.0, 6.0);
+  Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
+    final isHighlighted = msg.id == _highlightedMessageId;
+    final isSelected = _selectedMessages.contains(msg.id);
+    final customOwnColor = _parseColor(_chatSettings['own_bubble_color']);
+    final customOtherColor = _parseColor(_chatSettings['other_bubble_color']);
+    final customBotColor = _parseColor(_chatSettings['bot_bubble_color']);
 
-     return RepaintBoundary(
-       child: Align(
-         alignment: msg.isOwn ? Alignment.centerRight : Alignment.centerLeft,
-         child: GestureDetector(
-           onTap: () {
-             if (_isSelectionMode) {
-               _toggleMessageSelection(msg.id);
-             } else {
-               _onMessageAction(msg);
-             }
-           },
+    final myNameColorHex = _chatSettings['name_color']?.toString() ??
+        PreferencesService.getNameColor();
+    final myNameColor = ChatNameColor.parse(myNameColorHex);
+
+    final presetId = _chatSettings['theme_preset']?.toString() ??
+        PreferencesService.getChatThemePreset();
+    final activePreset = ChatThemePreset.getById(presetId);
+
+    final isDark = theme.brightness == Brightness.dark;
+    final isBot = !msg.isOwn && (msg.senderId == null || msg.senderId == 0);
+
+    final rawBubbleColor = msg.isOwn
+        ? (msg.isPending ? Colors.grey.shade500 : (customOwnColor ?? activePreset.ownBubbleGradient[0]))
+        : (isBot
+            ? (customBotColor ?? (isDark ? const Color(0xFF262C3A) : Colors.grey.shade100))
+            : (customOtherColor ?? (isDark ? activePreset.otherBubbleColor : activePreset.otherBubbleColorLight)));
+
+    final textColor = msg.isOwn
+        ? Colors.white
+        : (rawBubbleColor.computeLuminance() > 0.55 ? Colors.black87 : Colors.white);
+    final timeColor = textColor.withValues(alpha: 0.70);
+
+    final double bubbleRadius = (_chatSettings['bubble_radius'] is num
+        ? (_chatSettings['bubble_radius'] as num).toDouble()
+        : double.tryParse(_chatSettings['bubble_radius']?.toString() ?? '')) ??
+        PreferencesService.getBubbleRadius();
+    final double smallRadius = (bubbleRadius * 0.25).clamp(2.0, 6.0);
+
+    final bubbleBorderRadius = BorderRadius.only(
+      topLeft: Radius.circular(bubbleRadius),
+      topRight: Radius.circular(bubbleRadius),
+      bottomLeft: Radius.circular(msg.isOwn ? bubbleRadius : smallRadius),
+      bottomRight: Radius.circular(msg.isOwn ? smallRadius : bubbleRadius),
+    );
+
+    final Border? bubbleBorder = isSelected
+        ? Border.all(color: theme.colorScheme.primary, width: 2.0)
+        : (isHighlighted
+            ? Border.all(color: msg.isOwn ? Colors.white : theme.colorScheme.primary, width: 2.0)
+            : null);
+
+    final List<BoxShadow> bubbleShadows = [
+      BoxShadow(
+        color: Colors.black.withValues(alpha: isDark ? 0.20 : 0.08),
+        blurRadius: 4,
+        offset: const Offset(0, 1.5),
+      ),
+    ];
+
+    Gradient? bubbleGradient;
+    Color? bubbleBgColor;
+
+    if (isSelected) {
+      bubbleBgColor = msg.isOwn
+          ? (customOwnColor ?? activePreset.ownBubbleGradient[0]).withValues(alpha: 0.8)
+          : theme.colorScheme.primary.withValues(alpha: 0.4);
+    } else if (isHighlighted) {
+      bubbleBgColor = rawBubbleColor.withValues(alpha: 0.8);
+    } else if (msg.isOwn) {
+      if (msg.isPending) {
+        bubbleBgColor = Colors.grey.shade600;
+      } else if (customOwnColor != null) {
+        bubbleBgColor = customOwnColor;
+      } else {
+        final colors = activePreset.ownBubbleGradient;
+        if (colors.length > 1) {
+          bubbleGradient = LinearGradient(
+            colors: colors,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          );
+        } else {
+          bubbleBgColor = colors[0];
+        }
+      }
+    } else {
+      bubbleBgColor = rawBubbleColor;
+    }
+
+    final isOnlyImages = msg.attachments.isNotEmpty &&
+        msg.attachments.every((a) => _isImageAttachment(a)) &&
+        msg.text.trim().isEmpty &&
+        msg.replyTo == null &&
+        msg.voiceUrl == null &&
+        msg.voicePath == null;
+
+    if (isOnlyImages) {
+      return RepaintBoundary(
+        child: Align(
+          alignment: msg.isOwn ? Alignment.centerRight : Alignment.centerLeft,
+          child: GestureDetector(
+            onTap: () {
+              if (_isSelectionMode) {
+                _toggleMessageSelection(msg.id);
+              } else {
+                _onMessageAction(msg);
+              }
+            },
             onLongPress: () {
               if (msg.isPending) {
                 _showCancelPendingDialog(msg);
@@ -2944,78 +3209,183 @@ Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
                 _onMessageAction(msg);
               }
             },
-           child: ConstrainedBox(
-             constraints: BoxConstraints(maxWidth: maxWidth),
-             child: AnimatedContainer(
-               duration: const Duration(milliseconds: 300),
-               margin: const EdgeInsets.only(bottom: 12),
-               padding: const EdgeInsets.all(12),
-               decoration: BoxDecoration(
-                 gradient: msg.isOwn && !isHighlighted && !isSelected && customOwnColor == null
-                     ? (msg.isPending
-                         ? LinearGradient(
-                             colors: [Colors.grey.shade500, Colors.grey.shade400],
-                             begin: Alignment.topLeft,
-                             end: Alignment.bottomRight,
-                           )
-                         : LinearGradient(
-                             colors: activePreset.ownBubbleGradient,
-                             begin: Alignment.topLeft,
-                             end: Alignment.bottomRight,
-                           ))
-                     : null,
-                 color: isSelected
-                     ? (msg.isOwn
-                         ? (customOwnColor ?? activePreset.ownBubbleGradient[0]).withValues(alpha: 0.5)
-                         : theme.colorScheme.primary.withValues(alpha: 0.2))
-                     : (isHighlighted ? bubbleColor.withValues(alpha: 0.5) : bubbleColor),
-                 border: isSelected
-                     ? Border.all(color: theme.colorScheme.primary, width: 2.0)
-                     : (isHighlighted
-                         ? Border.all(color: msg.isOwn ? Colors.white : theme.colorScheme.primary, width: 2.0)
-                         : null),
-                 borderRadius: BorderRadius.only(
-                   topLeft: Radius.circular(bubbleRadius),
-                   topRight: Radius.circular(bubbleRadius),
-                   bottomLeft: Radius.circular(msg.isOwn ? bubbleRadius : smallRadius),
-                   bottomRight: Radius.circular(msg.isOwn ? smallRadius : bubbleRadius),
-                 ),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                decoration: BoxDecoration(
+                  borderRadius: bubbleBorderRadius,
+                  boxShadow: bubbleShadows,
+                  border: bubbleBorder,
                 ),
-                child: Stack(
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (msg.isOwn)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 3),
-                            child: Text(
-                              _myLastName.isNotEmpty ? _myLastName : 'Вы',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: (myNameColor == const Color(0xFF000000) && bubbleColor.computeLuminance() < 0.25)
-                                    ? Colors.white
-                                    : myNameColor,
+                child: ClipRRect(
+                  borderRadius: bubbleBorderRadius,
+                  child: Stack(
+                    children: [
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: msg.attachments.map((att) {
+                          final heroTag = 'image_${msg.id}_${att.fileName}';
+                          return MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => _openFullscreenImage(att, heroTag, msg),
+                              child: Hero(
+                                tag: heroTag,
+                                child: (!kIsWeb && att.localPath != null && File(att.localPath!).existsSync())
+                                    ? Image.file(File(att.localPath!), fit: BoxFit.cover)
+                                    : IgnorePointer(
+                                        ignoring: kIsWeb,
+                                        child: AuthImage(url: att.fileUrl ?? '', fit: BoxFit.cover),
+                                      ),
                               ),
                             ),
-                          )
-                        else
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: Text(
-                              msg.displaySenderName,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: textColor == Colors.white
-                                    ? Colors.cyanAccent.shade100
-                                    : (theme.brightness == Brightness.dark
-                                        ? activePreset.accentColor
-                                        : const Color(0xFF0058A8)),
+                          );
+                        }).toList(),
+                      ),
+                      Positioned(
+                        bottom: 6,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.50),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (msg.isEdited)
+                                const Padding(
+                                  padding: EdgeInsets.only(right: 3),
+                                  child: Text(
+                                    'отредактировано',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.white,
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                ),
+                              Text(
+                                msg.time,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w400,
+                                ),
                               ),
+                              if (msg.isOwn) ...[
+                                const SizedBox(width: 3),
+                                Icon(
+                                  msg.isPending
+                                      ? Icons.access_time
+                                      : (msg.isRead ? Icons.done_all : Icons.done),
+                                  size: 13,
+                                  color: Colors.white,
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (msg.isPending)
+                        Positioned(
+                          top: 6,
+                          right: 6,
+                          child: const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
                             ),
                           ),
+                        ),
+                      if (isSelected)
+                        Positioned(
+                          top: 6,
+                          left: 6,
+                          child: Container(
+                            padding: const EdgeInsets.all(3),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF054582),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.check,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return RepaintBoundary(
+      child: Align(
+        alignment: msg.isOwn ? Alignment.centerRight : Alignment.centerLeft,
+        child: GestureDetector(
+          onTap: () {
+            if (_isSelectionMode) {
+              _toggleMessageSelection(msg.id);
+            } else {
+              _onMessageAction(msg);
+            }
+          },
+          onLongPress: () {
+            if (msg.isPending) {
+              _showCancelPendingDialog(msg);
+            } else if (_isSelectionMode) {
+              _toggleMessageSelection(msg.id);
+            } else {
+              _onMessageAction(msg);
+            }
+          },
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxWidth),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 4),
+              padding: msg.text.trim().isEmpty
+                  ? const EdgeInsets.symmetric(horizontal: 6, vertical: 5)
+                  : const EdgeInsets.fromLTRB(8, 5, 8, 5),
+              decoration: BoxDecoration(
+                borderRadius: bubbleBorderRadius,
+                boxShadow: bubbleShadows,
+                border: bubbleBorder,
+                gradient: bubbleGradient,
+                color: bubbleBgColor,
+              ),
+              child: Stack(
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (!msg.isOwn)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 3),
+                          child: Text(
+                            msg.displaySenderName,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: textColor == Colors.white
+                                  ? Colors.cyanAccent.shade100
+                                  : (theme.brightness == Brightness.dark
+                                      ? activePreset.accentColor
+                                      : const Color(0xFF0058A8)),
+                            ),
+                          ),
+                        ),
                         if (msg.replyTo != null)
                           GestureDetector(
                             onTap: () => _scrollToMessage(msg.replyTo!.id),
@@ -3198,141 +3568,105 @@ Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
                         final lat = att.latitude ?? 0.0;
                         final lon = att.longitude ?? 0.0;
                         final coordsText = '${lat.toStringAsFixed(5)}, ${lon.toStringAsFixed(5)}';
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(14),
-                            onTap: () => _openMapLocation(lat, lon),
-                            child: Container(
-                              constraints: const BoxConstraints(minWidth: 200, maxWidth: 260),
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: msg.isOwn
-                                    ? Colors.white.withValues(alpha: 0.14)
-                                    : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.85),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: msg.isOwn
-                                      ? Colors.white.withValues(alpha: 0.2)
-                                      : theme.colorScheme.outline.withValues(alpha: 0.2),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(
-                                          color: msg.isOwn
-                                              ? Colors.white.withValues(alpha: 0.2)
-                                              : theme.colorScheme.primary.withValues(alpha: 0.12),
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: Icon(
-                                          Icons.location_on_rounded,
-                                          color: msg.isOwn ? Colors.white : theme.colorScheme.primary,
-                                          size: 22,
-                                        ),
+                        final fileIconColor = msg.isOwn
+                            ? (activePreset.ownBubbleGradient[0])
+                            : theme.colorScheme.primary;
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: () => _openMapLocation(lat, lon),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 1),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: const BoxDecoration(
+                                        color: Colors.white,
+                                        shape: BoxShape.circle,
                                       ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              'Геопозиция',
-                                              style: TextStyle(
-                                                color: msg.isOwn ? Colors.white : theme.colorScheme.onSurface,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 14,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 2),
-                                            Text(
-                                              coordsText,
-                                              style: TextStyle(
-                                                color: msg.isOwn ? Colors.white70 : theme.colorScheme.onSurfaceVariant,
-                                                fontSize: 12,
-                                                fontFamily: 'monospace',
-                                              ),
-                                            ),
-                                          ],
-                                        ),
+                                      child: Icon(
+                                        Icons.location_on_rounded,
+                                        color: fileIconColor,
+                                        size: 22,
                                       ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
-                                    decoration: BoxDecoration(
-                                      color: msg.isOwn
-                                          ? Colors.white.withValues(alpha: 0.16)
-                                          : theme.colorScheme.primary.withValues(alpha: 0.08),
-                                      borderRadius: BorderRadius.circular(8),
                                     ),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
+                                    const SizedBox(width: 8),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(
-                                          Icons.map_outlined,
-                                          size: 15,
-                                          color: msg.isOwn ? Colors.white : theme.colorScheme.primary,
-                                        ),
-                                        const SizedBox(width: 6),
                                         Text(
-                                          'Открыть на карте',
+                                          'Геопозиция',
                                           style: TextStyle(
-                                            color: msg.isOwn ? Colors.white : theme.colorScheme.primary,
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 12,
+                                            color: textColor,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          coordsText,
+                                          style: TextStyle(
+                                            color: textColor.withValues(alpha: 0.75),
+                                            fontSize: 11,
+                                            fontFamily: 'monospace',
                                           ),
                                         ),
                                       ],
                                     ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      } else {
-                        return GestureDetector(
-                          onTap: () => _downloadFile(att),
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            margin: const EdgeInsets.only(bottom: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.black12,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.insert_drive_file, color: Colors.white),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    att.fileName,
-                                    style: const TextStyle(color: Colors.white),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                                  ],
                                 ),
-                                const SizedBox(width: 8),
-                                Icon(
-                                  att.localPath != null ? Icons.visibility : Icons.download,
-                                  color: Colors.white70,
-                                  size: 18,
+                                const SizedBox(height: 6),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 10),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withValues(alpha: 0.18),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.map_outlined,
+                                            size: 13,
+                                            color: textColor,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'Открыть на карте',
+                                            style: TextStyle(
+                                              color: textColor,
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (msg.text.trim().isEmpty) ...[
+                                      const SizedBox(width: 8),
+                                      _buildTimeRow(msg, timeColor, textColor),
+                                    ],
+                                  ],
                                 ),
                               ],
                             ),
                           ),
                         );
+                      } else {
+                        final fileIconColor = msg.isOwn
+                            ? (activePreset.ownBubbleGradient[0])
+                            : theme.colorScheme.primary;
+                        return _buildFileAttachmentCard(att, msg, theme, textColor, fileIconColor, timeColor);
                       }
                     }),
 
@@ -3341,6 +3675,7 @@ Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
                       voiceUrl: msg.voiceUrl,
                       voicePath: msg.voicePath,
                       isOwn: msg.isOwn,
+                      trailingBottom: msg.text.trim().isEmpty ? _buildTimeRow(msg, timeColor, textColor) : null,
                       initialTranscription: msg.transcription,
                       onGetLocalAudio: () async {
                         if (msg.voiceUrl == null || kIsWeb) return null;
@@ -3376,11 +3711,28 @@ Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
                     ),
 
                   if (msg.text.isNotEmpty)
-                    _buildMessageTextWithLinks(msg.text, msg.isOwn, theme, textColor),
-                  
+                    Wrap(
+                      alignment: WrapAlignment.end,
+                      crossAxisAlignment: WrapCrossAlignment.end,
+                      spacing: 8,
+                      runSpacing: 2,
+                      children: [
+                        _buildMessageTextWithLinks(msg.text, msg.isOwn, theme, textColor),
+                        _buildTimeRow(msg, timeColor, textColor),
+                      ],
+                    )
+                  else if (!msg.attachments.any((a) => !a.isLocation && !_isImageAttachment(a) && !_isVideoAttachment(a)) &&
+                           !msg.attachments.any((a) => a.isLocation) &&
+                           msg.voiceUrl == null &&
+                           msg.voicePath == null)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: _buildTimeRow(msg, timeColor, textColor),
+                    ),
+
                   if (msg.reactions.isNotEmpty)
                     Padding(
-                      padding: const EdgeInsets.only(top: 6, bottom: 4),
+                      padding: const EdgeInsets.only(top: 4, bottom: 2),
                       child: Wrap(
                         spacing: 6,
                         runSpacing: 4,
@@ -3396,7 +3748,7 @@ Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
                               decoration: BoxDecoration(
                                 color: isMyReaction 
                                     ? (msg.isOwn ? Colors.white.withValues(alpha: 0.25) : theme.colorScheme.primary.withValues(alpha: 0.2))
-                                    : (msg.isOwn ? Colors.white.withValues(alpha: 0.08) : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)),
+                                    : (msg.isOwn ? Colors.white.withValues(alpha: 0.12) : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5)),
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(
                                   color: isMyReaction 
@@ -3425,56 +3777,6 @@ Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
                         }).toList(),
                       ),
                     ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (msg.isPending) ...[
-                        Padding(
-                          padding: const EdgeInsets.only(right: 4),
-                          child: Text(
-                            'Ожидает отправки',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: timeColor,
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        ),
-                      ] else if (msg.isEdited) ...[
-                        Padding(
-                          padding: const EdgeInsets.only(right: 4),
-                          child: Text(
-                            'изменено',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: timeColor,
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        ),
-                      ],
-                      Text(
-                        msg.time,
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: timeColor,
-                        ),
-                      ),
-                      if (msg.isOwn) ...[
-                        const SizedBox(width: 4),
-                        Icon(
-                          msg.isPending
-                              ? Icons.access_time
-                              : (msg.isRead ? Icons.done_all : Icons.done),
-                          size: 13,
-                          color: msg.isPending
-                              ? timeColor
-                              : (msg.isRead ? (textColor == Colors.white ? Colors.cyanAccent : Colors.blue) : timeColor),
-                        ),
-                       ],
-                      ],
-                      ),
                     ],
                   ),
                   // Индикатор ожидания для pending-сообщений
@@ -3512,12 +3814,12 @@ Widget _buildMessageBubble(ChatMessage msg, ThemeData theme, double maxWidth) {
                     ),
                 ],
               ),
-              ),
             ),
           ),
         ),
-      );
-    }
+      ),
+    );
+  }
 
    Widget _buildSelectionActionBar(ThemeData theme) {
      if (!_isSelectionMode || _selectedMessages.isEmpty) return const SizedBox.shrink();
@@ -3593,6 +3895,12 @@ const Spacer(),
       );
     }
 
+    final presetId = _chatSettings['theme_preset']?.toString() ??
+        PreferencesService.getChatThemePreset();
+    final activePreset = ChatThemePreset.getById(presetId);
+    final customOwnColor = _parseColor(_chatSettings['own_bubble_color']);
+    final sendBtnColor = customOwnColor ?? activePreset.ownBubbleGradient[0];
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -3665,13 +3973,13 @@ const Spacer(),
             ),
           ),
         Container(
-          padding: EdgeInsets.symmetric(horizontal: padding, vertical: 10),
+          padding: EdgeInsets.symmetric(horizontal: padding, vertical: 8),
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
             boxShadow: [
               BoxShadow(
-                color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                blurRadius: 12,
+                color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                blurRadius: 10,
                 offset: const Offset(0, -2),
               ),
             ],
@@ -3679,152 +3987,191 @@ const Spacer(),
           child: _isRecording
               ? Row(
                   children: [
-                    if (_isRecordLocked) ...[
-                      IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: _cancelRecording,
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    Container(
-                      width: 10,
-                      height: 10,
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 10,
+                              height: 10,
+                              decoration: const BoxDecoration(
+                                color: Colors.red,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _formatRecordDuration(_recordDurationSeconds),
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            const SizedBox(width: 16),
+                            GestureDetector(
+                              onTap: _cancelRecording,
+                              child: Text(
+                                'ОТМЕНА',
+                                style: TextStyle(
+                                  color: sendBtnColor,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      _formatRecordDuration(_recordDurationSeconds),
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _isRecordLocked
-                          ? const Center(
-                              child: Text(
-                                'Запись зафиксирована',
-                                style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
-                              ),
-                            )
-                          : const Text(
-                              'Отпустите для фиксации записи',
-                              style: TextStyle(color: Colors.grey, fontSize: 11),
-                              textAlign: TextAlign.center,
-                            ),
-                    ),
-                    if (_isRecordLocked)
-                      IconButton(
-                        icon: Icon(Icons.send, color: theme.colorScheme.primary),
-                        onPressed: _stopAndSendRecording,
-                      )
-                    else
-                      Container(
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Padding(
-                          padding: EdgeInsets.all(12),
-                          child: Icon(
-                            Icons.mic,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                        ),
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: sendBtnColor,
+                        shape: BoxShape.circle,
                       ),
+                      child: IconButton(
+                        icon: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 24),
+                        onPressed: _stopAndSendRecording,
+                      ),
+                    ),
                   ],
                 )
               : Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    IconButton(
-                      icon: Icon(Icons.attach_file, color: theme.colorScheme.onSurfaceVariant),
-                      onPressed: _pickAttachment,
-                    ),
                     Expanded(
                       child: Container(
                         decoration: BoxDecoration(
                           color: theme.colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(24),
                         ),
-                        child: TextField(
-                          controller: _messageController,
-                          focusNode: _focusNode,
-                          onChanged: (val) => setState(() {}),
-                          contentInsertionConfiguration: ContentInsertionConfiguration(
-                            allowedMimeTypes: const <String>[
-                              'image/png',
-                              'image/jpeg',
-                              'image/jpg',
-                              'image/gif',
-                              'image/webp',
-                            ],
-                            onContentInserted: (KeyboardInsertedContent data) async {
-                              if (data.data != null) {
-                                _handlePastedAttachment(
-                                  data.data!,
-                                  'keyboard_image_${DateTime.now().millisecondsSinceEpoch}.png',
-                                  data.mimeType,
-                                );
-                              }
-                            },
-                          ),
-                          contextMenuBuilder: (context, editableTextState) {
-                            final List<ContextMenuButtonItem> buttonItems =
-                                editableTextState.contextMenuButtonItems;
-                            if (kIsWeb) {
-                              return AdaptiveTextSelectionToolbar.buttonItems(
-                                anchors: editableTextState.contextMenuAnchors,
-                                buttonItems: buttonItems,
-                              );
-                            }
-                            return FutureBuilder<Map<String, dynamic>?>(
-                              future: MobileClipboardHelper.getClipboardImage(),
-                              builder: (context, snapshot) {
-                                final imageInfo = snapshot.data;
-                                final items = List<ContextMenuButtonItem>.from(buttonItems);
-                                if (imageInfo != null) {
-                                  items.insert(
-                                    0,
-                                    ContextMenuButtonItem(
-                                      label: 'Вставить изображение',
-                                      onPressed: () {
-                                        ContextMenuController.removeAny();
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            if (kIsWeb)
+                              IconButton(
+                                icon: Icon(
+                                  _showEmojiPicker ? Icons.keyboard_alt_outlined : Icons.sentiment_satisfied_alt_outlined,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                  size: 24,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _showEmojiPicker = !_showEmojiPicker;
+                                    if (_showEmojiPicker) {
+                                      _focusNode.unfocus();
+                                    } else {
+                                      _focusNode.requestFocus();
+                                    }
+                                  });
+                                },
+                              )
+                            else
+                              const SizedBox(width: 14),
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                child: TextField(
+                                  controller: _messageController,
+                                  focusNode: _focusNode,
+                                  minLines: 1,
+                                  maxLines: 5,
+                                  keyboardType: TextInputType.multiline,
+                                  onChanged: (val) => setState(() {}),
+                                  contentInsertionConfiguration: ContentInsertionConfiguration(
+                                    allowedMimeTypes: const <String>[
+                                      'image/png',
+                                      'image/jpeg',
+                                      'image/jpg',
+                                      'image/gif',
+                                      'image/webp',
+                                    ],
+                                    onContentInserted: (KeyboardInsertedContent data) async {
+                                      if (data.data != null) {
                                         _handlePastedAttachment(
-                                          imageInfo['bytes'] as Uint8List,
-                                          imageInfo['fileName'] as String,
-                                          imageInfo['mimeType'] as String,
+                                          data.data!,
+                                          'keyboard_image_${DateTime.now().millisecondsSinceEpoch}.png',
+                                          data.mimeType,
+                                        );
+                                      }
+                                    },
+                                  ),
+                                  contextMenuBuilder: (context, editableTextState) {
+                                    final List<ContextMenuButtonItem> buttonItems =
+                                        editableTextState.contextMenuButtonItems;
+                                    if (kIsWeb) {
+                                      return AdaptiveTextSelectionToolbar.buttonItems(
+                                        anchors: editableTextState.contextMenuAnchors,
+                                        buttonItems: buttonItems,
+                                      );
+                                    }
+                                    return FutureBuilder<Map<String, dynamic>?>(
+                                      future: MobileClipboardHelper.getClipboardImage(),
+                                      builder: (context, snapshot) {
+                                        final imageInfo = snapshot.data;
+                                        final items = List<ContextMenuButtonItem>.from(buttonItems);
+                                        if (imageInfo != null) {
+                                          items.insert(
+                                            0,
+                                            ContextMenuButtonItem(
+                                              label: 'Вставить изображение',
+                                              onPressed: () {
+                                                ContextMenuController.removeAny();
+                                                _handlePastedAttachment(
+                                                  imageInfo['bytes'] as Uint8List,
+                                                  imageInfo['fileName'] as String,
+                                                  imageInfo['mimeType'] as String,
+                                                );
+                                              },
+                                            ),
+                                          );
+                                        }
+                                        return AdaptiveTextSelectionToolbar.buttonItems(
+                                          anchors: editableTextState.contextMenuAnchors,
+                                          buttonItems: items,
                                         );
                                       },
-                                    ),
-                                  );
-                                }
-                                return AdaptiveTextSelectionToolbar.buttonItems(
-                                  anchors: editableTextState.contextMenuAnchors,
-                                  buttonItems: items,
-                                );
-                              },
-                            );
-                          },
-                          decoration: const InputDecoration(
-                            hintText: 'Введите сообщение...',
-                            border: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          ),
-                          onSubmitted: (_) => _sendMessage(),
+                                    );
+                                  },
+                                  decoration: const InputDecoration(
+                                    hintText: '',
+                                    border: InputBorder.none,
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                                  ),
+                                  onSubmitted: (_) {
+                                    if (_messageController.text.trim().isNotEmpty) {
+                                      _sendMessage();
+                                    }
+                                  },
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              icon: Icon(Icons.attach_file, color: theme.colorScheme.onSurfaceVariant, size: 24),
+                              onPressed: _pickAttachment,
+                            ),
+                          ],
                         ),
                       ),
                     ),
                     const SizedBox(width: 8),
                     if (_messageController.text.trim().isNotEmpty || _editingMessage != null)
-                      OfflineAwareButton(
-                        onPressed: _sendMessage,
-                        text: 'Отправить',
-                        icon: Icons.send,
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: sendBtnColor,
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 24),
+                          onPressed: _sendMessage,
                         ),
                       )
                     else
@@ -3847,16 +4194,17 @@ const Spacer(),
                           );
                         },
                         child: Container(
+                          width: 44,
+                          height: 44,
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.surfaceContainerHighest,
+                            color: sendBtnColor,
                             shape: BoxShape.circle,
                           ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
+                          child: const Center(
                             child: Icon(
                               Icons.mic,
-                              color: theme.colorScheme.onSurfaceVariant,
-                              size: 20,
+                              color: Colors.white,
+                              size: 24,
                             ),
                           ),
                         ),
@@ -3864,6 +4212,27 @@ const Spacer(),
                   ],
                 ),
         ),
+        if (kIsWeb && _showEmojiPicker)
+          SizedBox(
+            height: 290,
+            child: IosEmojiPicker(
+              onEmojiSelected: (emoji) {
+                final currentText = _messageController.text;
+                final selection = _messageController.selection;
+                final start = selection.start >= 0 ? selection.start : currentText.length;
+                final end = selection.end >= 0 ? selection.end : currentText.length;
+                final newText = currentText.replaceRange(start, end, emoji);
+                _messageController.value = TextEditingValue(
+                  text: newText,
+                  selection: TextSelection.collapsed(offset: start + emoji.length),
+                );
+                setState(() {});
+              },
+              onClose: () {
+                setState(() => _showEmojiPicker = false);
+              },
+            ),
+          ),
       ],
     );
   }

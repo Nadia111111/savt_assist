@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -730,9 +731,6 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
   Widget _buildLivePreviewCard(bool isDark) {
     final preset = _activePreset;
     final nameColor = ChatNameColor.parse(_nameColorHex);
-    final isCustomImage = _wallpaperUrl.isNotEmpty &&
-        !_wallpaperUrl.startsWith('color:#') &&
-        !_wallpaperUrl.startsWith('pattern:');
     final isColorOnly = _wallpaperUrl.startsWith('color:#');
 
     Color bgColor = isDark ? preset.backgroundColor : preset.lightBackgroundColor;
@@ -744,7 +742,7 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
     final double smallRadius = (effectiveRadius * 0.25).clamp(2.0, 6.0);
 
     return Container(
-      height: 165,
+      height: 125,
       width: double.infinity,
       decoration: BoxDecoration(
         color: bgColor,
@@ -762,15 +760,14 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
             ),
           ),
 
-          // Outgoing message bubble aligned to the top-right
+          // Outgoing message bubble aligned to the right
           Positioned(
-            top: 20,
+            top: 32,
             right: 16,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               constraints: const BoxConstraints(maxWidth: 270),
               decoration: BoxDecoration(
-                gradient: _customOwnColor == null
+                gradient: _customOwnColor == null && preset.ownBubbleGradient.length > 1
                     ? LinearGradient(
                         colors: preset.ownBubbleGradient,
                         begin: Alignment.topLeft,
@@ -779,7 +776,7 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
                     : null,
                 color: _customOwnColor != null
                     ? ChatNameColor.parse(_customOwnColor!)
-                    : null,
+                    : (preset.ownBubbleGradient.length == 1 ? preset.ownBubbleGradient[0] : null),
                 borderRadius: BorderRadius.only(
                   topLeft: Radius.circular(effectiveRadius),
                   topRight: Radius.circular(effectiveRadius),
@@ -788,17 +785,18 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.15),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
+                    color: Colors.black.withValues(alpha: isDark ? 0.20 : 0.08),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1.5),
                   ),
                 ],
               ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.end,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // User's Surname / Name header with chosen name color
+                  // User's Surname / Name header with chosen name color - aligned to right
                   Padding(
                     padding: const EdgeInsets.only(bottom: 2.5),
                     child: Text(
@@ -820,29 +818,29 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: _fontSize,
-                            fontWeight: FontWeight.w500,
+                            fontWeight: FontWeight.w400,
                           ),
                         ),
                       ),
                       const SizedBox(width: 8),
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: 1.0),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 1.0),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
                               '09:57',
                               style: TextStyle(
-                                color: Colors.white70,
+                                color: Colors.white.withValues(alpha: 0.70),
                                 fontSize: 11,
                                 fontWeight: FontWeight.w400,
                               ),
                             ),
-                            SizedBox(width: 3),
+                            const SizedBox(width: 3),
                             Icon(
                               Icons.done_all,
                               size: 15,
-                              color: Colors.white70,
+                              color: Colors.white.withValues(alpha: 0.75),
                             ),
                           ],
                         ),

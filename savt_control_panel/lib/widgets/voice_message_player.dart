@@ -14,6 +14,7 @@ class VoiceMessagePlayer extends StatefulWidget {
 
   final Color? activeColor;
   final bool transparentBackground;
+  final Widget? trailingBottom;
 
   const VoiceMessagePlayer({
     super.key,
@@ -26,6 +27,7 @@ class VoiceMessagePlayer extends StatefulWidget {
     this.onDownload,
     this.activeColor,
     this.transparentBackground = false,
+    this.trailingBottom,
   });
 
   @override
@@ -239,12 +241,12 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 250,
-          padding: const EdgeInsets.all(8),
+          width: 240,
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           decoration: BoxDecoration(
             color: widget.transparentBackground
                 ? Colors.transparent
-                : (widget.isOwn ? Colors.white.withValues(alpha: 0.12) : theme.colorScheme.surfaceContainerHigh),
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(16),
           ),
           child: Row(
@@ -252,24 +254,31 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
               GestureDetector(
                 onTap: _togglePlay,
                 child: Container(
-                  width: 38,
-                  height: 38,
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
                     color: widget.isOwn ? Colors.white : activeColor,
                     shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.12),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
                   child: _isLoadingAudio 
                     ? Padding(
-                        padding: const EdgeInsets.all(10.0),
+                        padding: const EdgeInsets.all(12.0),
                         child: CircularProgressIndicator(
                           color: widget.isOwn ? activeColor : Colors.white,
                           strokeWidth: 2,
                         ),
                       )
                     : Icon(
-                        _isPlaying ? Icons.pause : Icons.play_arrow,
+                        _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                         color: widget.isOwn ? activeColor : Colors.white,
-                        size: 20,
+                        size: 26,
                       ),
                 ),
               ),
@@ -316,7 +325,7 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          _isPlaying ? _formatDuration(_position) : _formatDuration(displayDuration),
+                          '${_isPlaying ? _formatDuration(_position) : _formatDuration(displayDuration)} ●',
                           style: TextStyle(
                             color: colorVariant,
                             fontSize: 11,
@@ -389,6 +398,10 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer> {
                                   color: colorVariant,
                                 ),
                               ),
+                            ],
+                            if (widget.trailingBottom != null) ...[
+                              const SizedBox(width: 8),
+                              widget.trailingBottom!,
                             ],
                           ],
                         ),

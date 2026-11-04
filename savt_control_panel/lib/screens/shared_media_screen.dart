@@ -50,14 +50,12 @@ class _SharedMediaScreenState extends State<SharedMediaScreen> {
   final List<ChatAttachmentModel> _images = [];
   final List<ChatAttachmentModel> _files = [];
   final List<ChatAttachmentModel> _voices = [];
-  final List<ChatAttachmentModel> _locations = [];
   final List<ChatMessage> _linkMessages = [];
 
   // Scroll Controllers
   final ScrollController _photosScrollController = ScrollController();
   final ScrollController _filesScrollController = ScrollController();
   final ScrollController _voicesScrollController = ScrollController();
-  final ScrollController _locationsScrollController = ScrollController();
   late PageController _pageController;
 
   // Pagination states
@@ -72,10 +70,6 @@ class _SharedMediaScreenState extends State<SharedMediaScreen> {
   int _voicesPage = 1;
   bool _voicesHasMore = true;
   bool _isLoadingVoices = false;
-
-  int _locationsPage = 1;
-  bool _locationsHasMore = true;
-  bool _isLoadingLocations = false;
 
   @override
   void initState() {
@@ -99,11 +93,6 @@ class _SharedMediaScreenState extends State<SharedMediaScreen> {
         _loadVoices();
       }
     });
-    _locationsScrollController.addListener(() {
-      if (_locationsScrollController.position.pixels >= _locationsScrollController.position.maxScrollExtent - 200) {
-        _loadLocations();
-      }
-    });
 
     // Initial load for active tab (0 - Photos)
     _loadImages();
@@ -114,7 +103,6 @@ class _SharedMediaScreenState extends State<SharedMediaScreen> {
     _photosScrollController.dispose();
     _filesScrollController.dispose();
     _voicesScrollController.dispose();
-    _locationsScrollController.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -165,17 +153,6 @@ class _SharedMediaScreenState extends State<SharedMediaScreen> {
           _voices.addAll(list);
           _voicesPage = 2;
           _voicesHasMore = list.length >= 20;
-        });
-      } else if (_activeTabIndex == 4) {
-        // Refresh Locations
-        final res = await chatService.getChatAttachments(chatIdInt, type: 'location', page: 1, size: 20);
-        final items = res['items'] as List? ?? [];
-        final list = items.map((item) => ChatAttachmentModel.fromJson(Map<String, dynamic>.from(item))).toList();
-        setState(() {
-          _locations.clear();
-          _locations.addAll(list);
-          _locationsPage = 2;
-          _locationsHasMore = list.length >= 20;
         });
       }
     } catch (e) {
@@ -280,36 +257,6 @@ class _SharedMediaScreenState extends State<SharedMediaScreen> {
     }
   }
 
-  Future<void> _loadLocations() async {
-    if (_isLoadingLocations || !_locationsHasMore) return;
-    setState(() => _isLoadingLocations = true);
-
-    try {
-      final chatIdInt = int.tryParse(widget.chatId) ?? 0;
-      if (chatIdInt == 0) return;
-
-      final res = await chatService.getChatAttachments(
-        chatIdInt,
-        type: 'location',
-        page: _locationsPage,
-        size: 20,
-      );
-      final items = res['items'] as List? ?? [];
-      final list = items.map((item) => ChatAttachmentModel.fromJson(Map<String, dynamic>.from(item))).toList();
-
-      setState(() {
-        _locations.addAll(list);
-        _locationsPage++;
-        _locationsHasMore = list.length >= 20;
-      });
-    } catch (e) {
-      debugPrint('Error loading locations attachments: $e');
-      _showError('Ошибка загрузки геопозиций: $e');
-    } finally {
-      setState(() => _isLoadingLocations = false);
-    }
-  }
-
   void _onTabChanged(int index) {
     setState(() {
       _activeTabIndex = index;
@@ -321,8 +268,6 @@ class _SharedMediaScreenState extends State<SharedMediaScreen> {
       _loadFiles();
     } else if (index == 3 && _voices.isEmpty) {
       _loadVoices();
-    } else if (index == 4 && _locations.isEmpty) {
-      _loadLocations();
     }
   }
 
@@ -825,153 +770,6 @@ class _SharedMediaScreenState extends State<SharedMediaScreen> {
     );
   }
 
-  Widget _buildLocationsTab() {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    if (_locations.isEmpty && _isLoadingLocations) {
-      return const SkeletonList();
-    }
-    if (_locations.isEmpty) {
-      return const Center(child: Text('Здесь пока нет геопозиций', style: TextStyle(color: Colors.grey)));
-    }
-
-    return Column(
-      children: [
-        Expanded(
-          child: ListView.builder(
-            controller: _locationsScrollController,
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.base, vertical: AppSpacing.md),
-            itemCount: _locations.length,
-            itemBuilder: (context, idx) {
-              final attModel = _locations[idx];
-              final att = attModel.attachment;
-              final lat = att.latitude ?? 0.0;
-              final lon = att.longitude ?? 0.0;
-              final coordsText = '${lat.toStringAsFixed(5)}, ${lon.toStringAsFixed(5)}';
-
-              final senderText = attModel.senderId == null
-                  ? 'Сообщение'
-                  : 'Пользователь #${attModel.senderId}';
-
-              return GestureDetector(
-                onTap: () => widget.onNavigateToMessage(attModel.messageId),
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(AppSpacing.md),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: theme.colorScheme.outline.withValues(alpha: 0.1),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: Colors.redAccent.withValues(alpha: 0.15),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.location_on_rounded,
-                              color: Colors.redAccent,
-                              size: 22,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  senderText,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                    color: isDark ? Colors.lightBlueAccent : Colors.blue.shade800,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  coordsText,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 14,
-                                    fontFamily: 'monospace',
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Text(
-                            _formatTimeFromIso(attModel.createdAt),
-                            style: const TextStyle(color: Colors.grey, fontSize: 11),
-                          ),
-                        ],
-                      ),
-                      if (attModel.messageText.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          attModel.messageText,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 10),
-                      InkWell(
-                        borderRadius: BorderRadius.circular(10),
-                        onTap: () => _launchURL('https://yandex.ru/maps/?pt=$lon,$lat&z=16&l=map'),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.map_outlined,
-                                size: 16,
-                                color: theme.colorScheme.primary,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Открыть на карте',
-                                style: TextStyle(
-                                  color: theme.colorScheme.primary,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-        if (_isLoadingLocations)
-          const Padding(
-            padding: EdgeInsets.all(AppSpacing.sm),
-            child: Center(child: ShimmerBlock(height: 40, borderRadius: 12)),
-          ),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return GradientScaffold(
@@ -997,7 +795,6 @@ class _SharedMediaScreenState extends State<SharedMediaScreen> {
                       _buildTabChip('Файлы', 1),
                       _buildTabChip('Ссылки', 2),
                       _buildTabChip('Голосовые', 3),
-                      _buildTabChip('Геолокация', 4),
                     ],
                   ),
                 ),
@@ -1015,7 +812,6 @@ class _SharedMediaScreenState extends State<SharedMediaScreen> {
                       KeepAliveWrapper(child: _buildFilesTab()),
                       KeepAliveWrapper(child: _buildLinksTab()),
                       KeepAliveWrapper(child: _buildVoiceTab()),
-                      KeepAliveWrapper(child: _buildLocationsTab()),
                     ],
                   ),
                 ),
