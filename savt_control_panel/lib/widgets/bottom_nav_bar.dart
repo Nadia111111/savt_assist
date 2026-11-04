@@ -502,7 +502,8 @@ class AppRouteObserver extends NavigatorObserver {
             name == '/edit-profile' ||
             name == '/change-password' ||
             name == '/change-phone' ||
-            name == '/notifications') {
+            name == '/notifications' ||
+            name == '/favorites') {
           AppNavState.instance.setTab(3);
         } else if (name == '/home' ||
             name == '/shu-list' ||
@@ -514,8 +515,7 @@ class AppRouteObserver extends NavigatorObserver {
             name == '/create-reclamation' ||
             name.startsWith('/service-request') ||
             name == '/all-documents' ||
-            name == '/notes' ||
-            name == '/favorites') {
+            name == '/notes') {
           AppNavState.instance.setTab(0);
         }
       }

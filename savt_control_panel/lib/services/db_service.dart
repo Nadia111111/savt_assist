@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
@@ -21,6 +22,39 @@ class DbService {
     try {
       final db = await instance.database;
       await db.delete('cabinets');
+    } catch (_) {}
+  }
+
+  /// Получить общий размер базы данных в байтах
+  Future<int> getDatabaseSizeBytes() async {
+    if (kIsWeb) return 0;
+    try {
+      final dbPath = await getDatabasesPath();
+      final path = join(dbPath, 'savt_chat.db');
+      int total = 0;
+      for (final suffix in ['', '-wal', '-shm', '-journal']) {
+        final f = File('$path$suffix');
+        if (await f.exists()) {
+          total += await f.length();
+        }
+      }
+      return total;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Очистить кэш всех таблиц базы данных
+  Future<void> clearAllCache() async {
+    if (kIsWeb) return;
+    try {
+      final db = await database;
+      await db.delete('messages');
+      await db.delete('cabinets');
+      await db.delete('documents');
+      try {
+        await db.execute('VACUUM');
+      } catch (_) {}
     } catch (_) {}
   }
 

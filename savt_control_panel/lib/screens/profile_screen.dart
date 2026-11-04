@@ -16,7 +16,8 @@ import '../widgets/auth_image.dart';
 import '../services/preferences_service.dart';
 import '../services/offline_service.dart';
 import '../services/auth_service.dart';
-import '../auth/auth_page.dart';
+import '../services/cache_service.dart';
+import '../widgets/cache_clear_dialog.dart';
 import '../widgets/responsive_layout.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -31,7 +32,9 @@ class ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic> _userData = {};
   bool _isLoading = true;
   bool _isLoadingUserData = false;
-  double _cacheSizeMB = 0.0;
+  int _cacheSizeBytes = 0;
+  AppCacheBreakdown _cachedBreakdown = AppCacheBreakdown.empty;
+  String get _cacheSizeFormatted => AppCacheService.formatBytes(_cacheSizeBytes);
   final ScrollController _scrollController = ScrollController();
 
   void resetState() {
@@ -83,55 +86,31 @@ class ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadCacheSize() async {
     try {
-      final size = await AuthImage.getDiskCacheSizeMB();
-      setState(() {
-        _cacheSizeMB = size;
-      });
+      final breakdown = await AppCacheService.instance.getBreakdown();
+      if (mounted) {
+        setState(() {
+          _cachedBreakdown = breakdown;
+          _cacheSizeBytes = breakdown.totalBytes;
+        });
+      }
     } catch (_) {}
   }
 
-  Future<void> _clearCache() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Очистить кэш?'),
-        content: Text(
-          'Размер кэша: ${_cacheSizeMB.toStringAsFixed(1)} МБ.\n\n'
-          'При следующей загрузке изображения будут скачиваться заново с сервера.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Отмена'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Очистить', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
+  Future<void> _showClearCacheDialog() async {
+    final clearedBytes = await CacheClearDialog.show(
+      context,
+      initialBreakdown: _cachedBreakdown.totalBytes > 0 ? _cachedBreakdown : null,
     );
-
-    if (confirm != true) return;
-
-    try {
-      await AuthImage.clearDiskCache();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Кэш изображений очищен'),
-              backgroundColor: Colors.green),
-        );
-      }
+    if (clearedBytes != null && mounted) {
+      final formatted = AppCacheService.formatBytes(clearedBytes);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Кэш успешно очищен (освобождено $formatted)'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
       _loadCacheSize();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Ошибка очистки кэша: $e'),
-              backgroundColor: Colors.red),
-        );
-      }
     }
   }
 
@@ -448,8 +427,8 @@ class ProfileScreenState extends State<ProfileScreen> {
           const Divider(height: 1, indent: 56),
           _buildNavTile(
               Icons.cleaning_services,
-              'Очистить кэш (${_cacheSizeMB.toStringAsFixed(1)} МБ)',
-              _clearCache),
+              'Очистить кэш ($_cacheSizeFormatted)',
+              _showClearCacheDialog),
         ],
       ),
     );

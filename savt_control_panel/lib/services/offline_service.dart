@@ -436,6 +436,69 @@ class OfflineService {
     }
   }
 
+  /// Проверяет, относится ли ключ в SharedPreferences к данным оффлайн-кэша
+  static bool isDataCacheKey(String key) {
+    if (key.startsWith('cabinet_') ||
+        key.startsWith('project_') ||
+        (key.startsWith('kb_') && !key.startsWith('kb_sort') && !key.startsWith('kb_selected')) ||
+        key.startsWith('faq_') ||
+        key.startsWith('tags_') ||
+        key.startsWith('reclamation_') ||
+        key.startsWith('service_request_') ||
+        key == 'user_me' ||
+        key == 'user_chats' ||
+        key == 'cabinets_list' ||
+        key == 'projects_list' ||
+        key == 'all_user_documents' ||
+        key == 'favorite_articles_ids' ||
+        key == 'favorite_faqs_ids' ||
+        key == 'favorite_projects_ids' ||
+        key == 'notifications_list' ||
+        key == 'reclamations_list' ||
+        key == 'service_requests_list' ||
+        key == 'message_queue' ||
+        key == 'service_request_queue') {
+      return true;
+    }
+    return false;
+  }
+
+  /// Получить общий размер оффлайн-кэша данных в байтах
+  Future<int> getDataCacheSizeBytes() async {
+    int totalBytes = 0;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      for (final key in prefs.getKeys()) {
+        if (isDataCacheKey(key)) {
+          final val = prefs.get(key);
+          if (val is String) {
+            totalBytes += utf8.encode(val).length;
+          } else if (val is List<String>) {
+            for (final s in val) {
+              totalBytes += utf8.encode(s).length;
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    return totalBytes;
+  }
+
+  /// Очистить оффлайн-кэш данных, не затрагивая системные настройки и токены авторизации
+  Future<void> clearDataCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      for (final key in prefs.getKeys().toList()) {
+        if (isDataCacheKey(key)) {
+          await prefs.remove(key);
+        }
+      }
+      _cache.clear();
+    } catch (e) {
+      debugPrint('Ошибка очистки оффлайн-кэша данных: $e');
+    }
+  }
+
   // Service Request Queue
   void addServiceRequestToQueue(int cabinetId, String requestType, String description) {
     if (totalQueueSize >= maxQueueSize) {

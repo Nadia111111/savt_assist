@@ -41,6 +41,9 @@ class AuthImage extends StatefulWidget {
   static void cacheBytes(String url, Uint8List bytes) {
     final clean = _cleanUrl(url);
     _imageCache[clean] = bytes;
+    if (!kIsWeb) {
+      _saveToDisk(url, bytes);
+    }
   }
 
   static Uint8List? getCachedBytes(String url) {
@@ -83,34 +86,36 @@ class AuthImage extends StatefulWidget {
   }
 
   static Future<void> clearDiskCache() async {
-    if (kIsWeb) {
-      _imageCache.clear();
-      return;
-    }
+    _imageCache.clear();
+    if (kIsWeb) return;
     try {
       final dir = await getApplicationDocumentsDirectory();
       final cacheDir = Directory('${dir.path}/image_cache');
       if (await cacheDir.exists()) {
         await cacheDir.delete(recursive: true);
       }
-      _imageCache.clear();
     } catch (e) {
       debugPrint('Error clearing disk cache: $e');
     }
   }
 
   static Future<String> getCacheSize() async {
-    if (kIsWeb) return '0.0 МБ';
     final mb = await getDiskCacheSizeMB();
     return '${mb.toStringAsFixed(1)} МБ';
   }
 
-  static Future<double> getDiskCacheSizeMB() async {
-    if (kIsWeb) return 0.0;
+  static Future<int> getDiskCacheSizeBytes() async {
+    if (kIsWeb) {
+      int total = 0;
+      for (final b in _imageCache.values) {
+        total += b.length;
+      }
+      return total;
+    }
     try {
       final dir = await getApplicationDocumentsDirectory();
       final cacheDir = Directory('${dir.path}/image_cache');
-      if (!await cacheDir.exists()) return 0.0;
+      if (!await cacheDir.exists()) return 0;
 
       final files = await cacheDir.list().toList();
       int totalSize = 0;
@@ -119,10 +124,15 @@ class AuthImage extends StatefulWidget {
           totalSize += await entity.length();
         }
       }
-      return totalSize / (1024 * 1024);
+      return totalSize;
     } catch (_) {
-      return 0.0;
+      return 0;
     }
+  }
+
+  static Future<double> getDiskCacheSizeMB() async {
+    final bytes = await getDiskCacheSizeBytes();
+    return bytes / (1024 * 1024);
   }
 
   static Future<void> _checkAndEvictCache() async {

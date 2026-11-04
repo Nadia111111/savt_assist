@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../widgets/gradient_scaffold.dart';
 import '../widgets/skeletons.dart';
-import '../widgets/bottom_nav_bar.dart';
 import '../main.dart'; // serviceRequestService
 
 class MyRequestsScreen extends StatefulWidget {
@@ -182,6 +181,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return GradientScaffold(
+      currentNavIndex: 0,
       appBarTitle: 'Мои заявки',
       appBarAction: IconButton(
         icon: Icon(_isSearchExpanded ? Icons.close : Icons.search,
@@ -278,7 +278,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
           ),
         ],
       ),
-      bottomNavBar: BottomNavBar(currentIndex: 3, onTap: _onNavTapped),
     );
   }
 
@@ -515,21 +514,5 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
         ],
       ),
     );
-  }
-
-  void _onNavTapped(int index) {
-    switch (index) {
-      case 0:
-        Navigator.pushReplacementNamed(context, '/shu-list');
-        break;
-      case 1:
-        Navigator.pushReplacementNamed(context, '/knowledge');
-        break;
-      case 2:
-        Navigator.pushReplacementNamed(context, '/chats');
-        break;
-      case 3:
-        break;
-    }
   }
 }

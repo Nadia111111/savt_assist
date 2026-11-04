@@ -4,7 +4,6 @@ import '../theme/app_spacing.dart';
 import '../widgets/gradient_scaffold.dart';
 import '../widgets/responsive_layout.dart';
 import '../widgets/skeletons.dart';
-import '../widgets/bottom_nav_bar.dart';
 import '../widgets/animated_card.dart';
 import '../main.dart'; // favoritesService
 
@@ -110,7 +109,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
   @override
   Widget build(BuildContext context) {
     return GradientScaffold(
-      currentNavIndex: 0,
+      currentNavIndex: 3,
       appBarTitle: 'Избранное',
       appBarLeading: IconButton(
         icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 18),
@@ -162,10 +161,6 @@ class _FavoritesScreenState extends State<FavoritesScreen>
             ),
           ],
         ),
-      ),
-      bottomNavBar: BottomNavBar(
-        currentIndex: 3,
-        onTap: _onNavTapped,
       ),
     );
   }
@@ -451,22 +446,6 @@ Text(article['description'] ?? '',
       );
     } finally {
       _showingArticleDetail = false;
-    }
-  }
-
-  void _onNavTapped(int index) {
-    switch (index) {
-      case 0:
-        Navigator.pushReplacementNamed(context, '/shu-list');
-        break;
-      case 1:
-        Navigator.pushReplacementNamed(context, '/knowledge');
-        break;
-      case 2:
-        Navigator.pushReplacementNamed(context, '/chats');
-        break;
-      case 3:
-        break;
     }
   }
 }
