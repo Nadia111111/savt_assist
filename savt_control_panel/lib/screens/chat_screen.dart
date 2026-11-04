@@ -1606,6 +1606,7 @@ Future<void> _deleteSelectedMessages() async {
   Future<void> _stopAndSendRecording() async {
     _recordTimer?.cancel();
     final path = await _audioRecorder.stop();
+    final durationSec = _recordDurationSeconds > 0 ? _recordDurationSeconds : 1;
     setState(() {
       _isRecording = false;
       _isRecordLocked = false;
@@ -1616,8 +1617,8 @@ Future<void> _deleteSelectedMessages() async {
       setState(() => _isLoading = true);
       try {
         final url = await uploadService.uploadVoice(path);
-        final fileName = path.split('/').last;
-        final size = File(path).lengthSync();
+        final fileName = 'voice_${durationSec}s_${DateTime.now().millisecondsSinceEpoch}.m4a';
+        final size = !kIsWeb && File(path).existsSync() ? File(path).lengthSync() : 0;
         final atts = [{
           'file_url': url,
           'file_name': fileName,
@@ -1628,7 +1629,12 @@ Future<void> _deleteSelectedMessages() async {
         final res = await chatService.sendMessageWithAttachments(_realChatId, '', atts, replyToId: replyId);
         setState(() {
           final newMsg = ChatMessage.fromJson(res, _myUserId ?? 0);
-          _messages.insert(0, _replyTo != null ? newMsg.copyWith(replyTo: _replyTo) : newMsg);
+          final updatedMsg = newMsg.copyWith(
+            voicePath: path,
+            replyTo: _replyTo,
+            attachments: newMsg.attachments.map((a) => a.copyWith(localPath: path)).toList(),
+          );
+          _messages.insert(0, updatedMsg);
           _replyTo = null;
         });
         _animateToBottom();
@@ -2900,6 +2906,22 @@ _buildSelectionActionBar(theme),
     }
   }
 
+  int? _extractAudioDurationSeconds(ChatAttachment att) {
+    final match = RegExp(r'[_\-](\d+)s[_\-\.]').firstMatch(att.fileName);
+    if (match != null) {
+      final s = int.tryParse(match.group(1) ?? '');
+      if (s != null && s > 0) return s;
+    }
+    if (!kIsWeb && att.localPath != null && File(att.localPath!).existsSync()) {
+      return null;
+    }
+    if (att.fileSizeBytes != null && att.fileSizeBytes! > 0) {
+      final estimate = (att.fileSizeBytes! / 4000).round();
+      if (estimate > 0) return estimate;
+    }
+    return null;
+  }
+
   bool _isImageAttachment(ChatAttachment att) {
     final path = (att.fileUrl ?? att.localPath ?? '').toLowerCase();
     final cleanPath = path.split('?').first;
@@ -3512,12 +3534,15 @@ _buildSelectionActionBar(theme),
                           ),
                         );
                       } else if (isAudio) {
+                        final durationSec = _extractAudioDurationSeconds(att);
                         return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.only(bottom: 2),
                           child: VoiceMessagePlayer(
                             voiceUrl: att.fileUrl,
                             voicePath: att.localPath,
                             isOwn: msg.isOwn,
+                            initialDuration: durationSec != null ? Duration(seconds: durationSec) : null,
+                            trailingBottom: msg.text.trim().isEmpty ? _buildTimeRow(msg, timeColor, textColor) : null,
                             initialTranscription: msg.transcription,
                             onDownload: () => _downloadFile(att),
                             onGetLocalAudio: () async {
@@ -3675,6 +3700,9 @@ _buildSelectionActionBar(theme),
                       voiceUrl: msg.voiceUrl,
                       voicePath: msg.voicePath,
                       isOwn: msg.isOwn,
+                      initialDuration: msg.voiceUrl != null && _extractAudioDurationSeconds(ChatAttachment(fileName: msg.voiceUrl!)) != null
+                          ? Duration(seconds: _extractAudioDurationSeconds(ChatAttachment(fileName: msg.voiceUrl!))!)
+                          : null,
                       trailingBottom: msg.text.trim().isEmpty ? _buildTimeRow(msg, timeColor, textColor) : null,
                       initialTranscription: msg.transcription,
                       onGetLocalAudio: () async {
