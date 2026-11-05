@@ -7,8 +7,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/animated_background.dart';
-import '../screens/forgot_password_screen.dart';
-import '../screens/password_reset_request_screen.dart';
 import '../main.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/auth_service.dart';
@@ -687,13 +685,16 @@ class _AuthPageState extends State<AuthPage>
                 return AlertDialog(
                   insetPadding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                  contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                  actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24)),
+                      borderRadius: BorderRadius.circular(20)),
                   title: const Row(
                     children: [
-                      Icon(Icons.telegram, color: Color(0xFF229ED9), size: 28),
-                      SizedBox(width: 10),
-                      Text('Код подтверждения'),
+                      Icon(Icons.telegram, color: Color(0xFF229ED9), size: 24),
+                      SizedBox(width: 8),
+                      Text('Код подтверждения',
+                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
                     ],
                   ),
                   content: SingleChildScrollView(
@@ -702,20 +703,26 @@ class _AuthPageState extends State<AuthPage>
                       children: [
                         const Text(
                           'Введите 6-значный код подтверждения, который прислал бот в Telegram.',
-                          style: TextStyle(fontSize: 14),
+                          style: TextStyle(fontSize: 13, height: 1.3),
                           textAlign: TextAlign.start,
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 12),
                         FutureBuilder<ClipboardData?>(
                           future: Clipboard.getData(Clipboard.kTextPlain),
                           builder: (context, snapshot) {
                             final clipText = snapshot.data?.text?.trim() ?? '';
                             if (RegExp(r'^\d{6}$').hasMatch(clipText)) {
                               return Padding(
-                                padding: const EdgeInsets.only(bottom: 12),
+                                padding: const EdgeInsets.only(bottom: 8),
                                 child: TextButton.icon(
-                                  icon: const Icon(Icons.content_paste),
-                                  label: Text('Вставить: $clipText'),
+                                  style: TextButton.styleFrom(
+                                    padding: EdgeInsets.zero,
+                                    minimumSize: Size.zero,
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  icon: const Icon(Icons.content_paste, size: 16),
+                                  label: Text('Вставить: $clipText',
+                                      style: const TextStyle(fontSize: 13)),
                                   onPressed: () {
                                     setStateDialog(() {
                                       codeController.text = clipText;
@@ -736,17 +743,27 @@ class _AuthPageState extends State<AuthPage>
                           maxLength: 6,
                           textAlign: TextAlign.center,
                           style: const TextStyle(
-                              fontSize: 24, fontWeight: FontWeight.bold),
+                              fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 3),
                           decoration: InputDecoration(
+                            isDense: true,
+                            counterText: '',
                             hintText: '••••••',
+                            hintStyle: const TextStyle(letterSpacing: 3),
                             border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16)),
+                                borderRadius: BorderRadius.circular(14)),
                             filled: true,
                             fillColor: theme.colorScheme.surfaceContainerLow,
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 6),
                         TextButton(
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
                           onPressed: canResend
                               ? () async {
                                   if (_registrationToken == null) return;
@@ -794,11 +811,16 @@ class _AuthPageState extends State<AuthPage>
                             canResend
                                 ? 'Отправить повторно'
                                 : 'Повторно через $resendSeconds сек',
-                            style: TextStyle(color: theme.colorScheme.primary),
+                            style: TextStyle(color: theme.colorScheme.primary, fontSize: 13),
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 4),
                         TextButton(
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
                           onPressed: isSubmittingRequest
                               ? null
                               : () => submitRegisterRequest(setStateDialog),
@@ -826,9 +848,9 @@ class _AuthPageState extends State<AuthPage>
                       },
                       child: Text('Отмена',
                           style: TextStyle(
-                              color: theme.colorScheme.onSurfaceVariant)),
+                              color: theme.colorScheme.onSurfaceVariant, fontSize: 15)),
                     ),
-                    ElevatedButton(
+                    TextButton(
                       onPressed: () async {
                         if (_registrationToken == null) return;
                         final code = codeController.text.trim();
@@ -943,8 +965,9 @@ class _AuthPageState extends State<AuthPage>
 
   Future<void> _showPrivacyPolicyDialog() async {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final expandedStates = List<bool>.filled(_policySections.length, false);
-    final isWeb = kIsWeb;
+    const isWeb = kIsWeb;
 
     final result = await showDialog<bool>(
       context: context,
@@ -957,114 +980,119 @@ class _AuthPageState extends State<AuthPage>
                 horizontal: isWeb ? 40 : 16,
                 vertical: isWeb ? 32 : 24,
               ),
+              contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(24)),
-              title: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Политика конфиденциальности',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
+                  borderRadius: BorderRadius.circular(20)),
+              title: const Text(
+                'Политика конфиденциальности',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
               ),
-              content: SizedBox(
-                width: isWeb ? 560 : double.infinity,
-                height:
-                    MediaQuery.of(context).size.height * (isWeb ? 0.5 : 0.7),
-                child: ListView.builder(
-                  itemCount: _policySections.length,
-                  itemBuilder: (context, index) {
-                    final section = _policySections[index];
-                    return Theme(
-                      data: theme.copyWith(
-                        dividerColor: Colors.transparent,
-                      ),
-                      child: ExpansionTile(
-                        initiallyExpanded: expandedStates[index],
-                        onExpansionChanged: (expanded) {
-                          setDialogState(() {
-                            expandedStates[index] = expanded;
-                          });
-                        },
-                        tilePadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 4),
-                        childrenPadding:
-                            const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                        title: Text(
-                          section['title']!,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
+              content: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: isWeb ? 560 : double.infinity,
+                  maxHeight:
+                      MediaQuery.of(context).size.height * (isWeb ? 0.55 : 0.65),
+                ),
+                child: SizedBox(
+                  width: isWeb ? 560 : double.infinity,
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: List.generate(_policySections.length, (index) {
+                        final section = _policySections[index];
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 6),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.05)
+                                : Colors.black.withValues(alpha: 0.03),
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                        ),
-                        children: [
-                          SelectableText(
-                            section['content']!,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontSize: 13,
-                              height: 1.5,
+                          child: Theme(
+                            data: theme.copyWith(
+                              dividerColor: Colors.transparent,
+                            ),
+                            child: ExpansionTile(
+                              key: PageStorageKey<int>(index),
+                              initiallyExpanded: expandedStates[index],
+                              onExpansionChanged: (expanded) {
+                                setDialogState(() {
+                                  expandedStates[index] = expanded;
+                                });
+                              },
+                              dense: true,
+                              visualDensity: VisualDensity.compact,
+                              tilePadding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 0),
+                              childrenPadding:
+                                  const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                              title: Text(
+                                section['title']!,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              children: [
+                                SelectableText(
+                                  section['content']!,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontSize: 12,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
-                      ),
-                    );
-                  },
+                        );
+                      }),
+                    ),
+                  ),
                 ),
               ),
+              actionsPadding: const EdgeInsets.fromLTRB(16, 6, 16, 14),
               actions: [
                 Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton(
-                        onPressed: () => Navigator.pop(context, true),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: theme.colorScheme.primary,
-                          foregroundColor: theme.colorScheme.onPrimary,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14)),
-                          elevation: 0,
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: theme.colorScheme.primary,
+                        foregroundColor: theme.colorScheme.onPrimary,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
                         ),
-                        child: const Text(
-                          'Я согласен(а) с политикой конфиденциальности',
-                          style: TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.w600),
+                        elevation: 0,
+                      ),
+                      child: const Text(
+                        'Согласен с политикой',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: TextButton(
-                        onPressed: () => Navigator.pop(context, false),
-                        style: TextButton.styleFrom(
-                          backgroundColor:
-                              theme.colorScheme.surfaceContainerLow,
-                          foregroundColor: theme.colorScheme.onSurfaceVariant,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14)),
-                          elevation: 0,
-                        ),
-                        child: const Text(
-                          'Я не согласен(а) с политикой конфиденциальности',
-                          style: TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.w600),
+                    const SizedBox(height: 4),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                      ),
+                      child: Text(
+                        'Не согласен',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? Colors.red.shade300 : Colors.red.shade700,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 8),
                   ],
                 ),
               ],
@@ -1350,6 +1378,9 @@ class _AuthPageState extends State<AuthPage>
 
   Widget _buildLoginForm() {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final isMobile = !kIsWeb || MediaQuery.of(context).size.width < 600;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
       child: Column(
@@ -1376,27 +1407,38 @@ class _AuthPageState extends State<AuthPage>
               controller: _loginPasswordController,
               focusNode: _loginPasswordFocusNode,
               isRegister: false),
+          const SizedBox(height: 8),
           Align(
-            alignment: Alignment.centerRight,
+            alignment: isMobile ? Alignment.centerLeft : Alignment.centerRight,
             child: TextButton(
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
                 onPressed: () =>
                     Navigator.pushNamed(context, '/forgot-password'),
                 child: Text('Забыли пароль? Восстановите его через Telegram',
                     style: TextStyle(
                         fontSize: 12,
-                        color: theme.colorScheme.primary,
+                        color: isDark ? const Color(0xFF90CAF9) : theme.colorScheme.primary,
                         fontWeight: FontWeight.w500))),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Align(
-            alignment: Alignment.centerRight,
+            alignment: isMobile ? Alignment.centerLeft : Alignment.centerRight,
             child: TextButton(
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
                 onPressed: () =>
                     Navigator.pushNamed(context, '/password-reset-request'),
                 child: Text('Нет Telegram? Оставьте заявку на сброс пароля',
                     style: TextStyle(
                         fontSize: 12,
-                        color: theme.colorScheme.primary,
+                        color: isDark ? const Color(0xFF90CAF9) : theme.colorScheme.primary,
                         fontWeight: FontWeight.w500))),
           ),
           const SizedBox(height: 16),
@@ -1488,7 +1530,14 @@ class _AuthPageState extends State<AuthPage>
           const SizedBox(height: 12),
           _buildCheckbox(
               value: _agreeToPolicy,
-              onChanged: (_) {},
+              onChanged: (_) {
+                if (_agreeToPolicy) {
+                  setState(() => _agreeToPolicy = false);
+                  _onFormFieldChanged();
+                } else {
+                  _showPrivacyPolicyDialog();
+                }
+              },
               title: 'Я согласен с политикой конфиденциальности',
               isPolicy: true,
               onTap: _showPrivacyPolicyDialog),
@@ -1731,16 +1780,16 @@ class _AuthPageState extends State<AuthPage>
       bool isPolicy = false,
       VoidCallback? onTap}) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Row(children: [
       SizedBox(
         width: 22,
         height: 22,
         child: Checkbox(
           value: value,
-          onChanged: isPolicy ? (bool? v) {} : (bool? val) {
-            if (val != null) {
-              onChanged(val);
-            }
+          onChanged: (val) {
+            onChanged(val);
           },
           activeColor: theme.colorScheme.primary,
           checkColor: Colors.white,
@@ -1751,7 +1800,9 @@ class _AuthPageState extends State<AuthPage>
             return Colors.transparent;
           }),
           side: WidgetStateBorderSide.resolveWith((states) => BorderSide(
-            color: theme.colorScheme.primary,
+            color: states.contains(WidgetState.selected)
+                ? theme.colorScheme.primary
+                : (isDark ? Colors.white60 : theme.colorScheme.primary),
             width: 2,
           )),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
@@ -1766,9 +1817,10 @@ class _AuthPageState extends State<AuthPage>
               title,
               style: theme.textTheme.bodyMedium?.copyWith(
                 fontSize: 12,
-                color: theme.colorScheme.primary,
+                color: isDark ? const Color(0xFFE2E8F0) : theme.colorScheme.primary,
                 height: 1.3,
                 decoration: TextDecoration.underline,
+                decorationColor: isDark ? const Color(0xFFCBD5E1) : theme.colorScheme.primary,
               ),
             ),
           ),
