@@ -23,6 +23,7 @@ class MainNavigationContainer extends StatefulWidget {
 class MainNavigationContainerState extends State<MainNavigationContainer>
     with WidgetsBindingObserver {
   late int _currentIndex;
+  int get currentIndex => _currentIndex;
   late final PageController _pageController;
   final bool _isPageAnimating = false;
 

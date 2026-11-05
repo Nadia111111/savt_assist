@@ -41,6 +41,7 @@ import '../main.dart';
 import '../utils/web_paste_listener.dart';
 import '../utils/mobile_clipboard_helper.dart';
 import '../widgets/ios_emoji_picker.dart';
+import '../theme/app_spacing.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -92,6 +93,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   final List<int> _matchingIndices = [];
   int _currentMatchIndex = 0;
   
@@ -737,6 +739,8 @@ class _ChatScreenState extends State<ChatScreen> {
     PreferencesService.saveLastChatId(null);
     OfflineService().syncCompletedNotifier.removeListener(_onSyncCompleted);
     _messageController.dispose();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
     _focusNode.dispose();
     _scrollController.dispose();
     _recordTimer?.cancel();
@@ -1351,7 +1355,19 @@ Future<void> _deleteSelectedMessages() async {
     _scrollToMatch(prevIdx);
   }
 
+  void _startSearch() {
+    setState(() {
+      _isSearching = true;
+    });
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        FocusScope.of(context).requestFocus(_searchFocusNode);
+      }
+    });
+  }
+
   void _stopSearch() {
+    _searchFocusNode.unfocus();
     setState(() {
       _isSearching = false;
       _searchController.clear();
@@ -2605,47 +2621,6 @@ Future<void> _deleteSelectedMessages() async {
   }
 
   Widget _buildAppBarHeaderContent() {
-    if (_isSearching) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: _stopSearch,
-          ),
-          Expanded(
-            child: TextField(
-              controller: _searchController,
-              decoration: const InputDecoration(
-                hintText: 'Поиск...',
-                border: InputBorder.none,
-                hintStyle: TextStyle(color: Colors.white70),
-                filled: false,
-                fillColor: Colors.transparent,
-              ),
-              style: const TextStyle(color: Colors.white),
-              autofocus: true,
-              onChanged: _onSearchChanged,
-            ),
-          ),
-          if (_matchingIndices.isNotEmpty) ...[
-            Text(
-              '${_currentMatchIndex + 1} из ${_matchingIndices.length}',
-              style: const TextStyle(color: Colors.white70, fontSize: 13),
-            ),
-            IconButton(
-              icon: const Icon(Icons.keyboard_arrow_up, color: Colors.white),
-              onPressed: _prevMatch,
-            ),
-            IconButton(
-              icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white),
-              onPressed: _nextMatch,
-            ),
-          ],
-        ],
-      );
-    }
-
     if (_isSelectionMode) {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -2715,14 +2690,126 @@ Future<void> _deleteSelectedMessages() async {
           onPressed: _openChatSettings,
         ),
         IconButton(
-          icon: const Icon(Icons.search, color: Colors.white),
+          icon: Icon(_isSearching ? Icons.close : Icons.search, color: Colors.white),
           onPressed: () {
-            setState(() {
-              _isSearching = true;
-            });
+            if (_isSearching) {
+              _stopSearch();
+            } else {
+              _startSearch();
+            }
           },
         ),
       ],
+    );
+  }
+
+  Widget _buildSearchField(ThemeData theme) {
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.10),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              focusNode: _searchFocusNode,
+              onChanged: _onSearchChanged,
+              style: TextStyle(
+                color: theme.colorScheme.onSurface,
+                fontSize: 14,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Поиск по сообщениям...',
+                hintStyle: TextStyle(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontSize: 14,
+                ),
+                prefixIcon: Icon(
+                  Icons.search,
+                  color: theme.colorScheme.onSurfaceVariant,
+                  size: 24,
+                ),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(
+                          Icons.close,
+                          size: 18,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        onPressed: () {
+                          _searchController.clear();
+                          _onSearchChanged('');
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: theme.colorScheme.surfaceContainerHighest,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(
+                    color: theme.colorScheme.primary,
+                    width: 1.5,
+                  ),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.base,
+                  vertical: AppSpacing.md,
+                ),
+              ),
+            ),
+          ),
+          if (_matchingIndices.isNotEmpty) ...[
+            const SizedBox(width: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '${_currentMatchIndex + 1}/${_matchingIndices.length}',
+                style: TextStyle(
+                  color: theme.colorScheme.primary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            IconButton(
+              icon: Icon(Icons.keyboard_arrow_up, color: theme.colorScheme.onSurfaceVariant, size: 22),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              onPressed: _prevMatch,
+              tooltip: 'Предыдущее совпадение',
+            ),
+            IconButton(
+              icon: Icon(Icons.keyboard_arrow_down, color: theme.colorScheme.onSurfaceVariant, size: 22),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              onPressed: _nextMatch,
+              tooltip: 'Следующее совпадение',
+            ),
+            const SizedBox(width: 6),
+          ],
+        ],
+      ),
     );
   }
 
@@ -2738,41 +2825,68 @@ Future<void> _deleteSelectedMessages() async {
       );
     }
 
-    return GradientScaffold(
-      appBarCustomHeader: _buildAppBarHeader(),
-      showBottomNavBar: !_isSelectionMode,
-      currentNavIndex: 2,
-      body: ResponsiveContainer(
-        maxWidth: 600,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final isDesktop = constraints.maxWidth >= 600;
-            final messageMaxWidth = isDesktop ? 480.0 : MediaQuery.of(context).size.width * 0.85;
-            final horizontalPadding = isDesktop ? 12.0 : 6.0;
+    return PopScope(
+      canPop: !_isSearching && !_isSelectionMode && !_showEmojiPicker,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_showEmojiPicker) {
+          setState(() => _showEmojiPicker = false);
+          return;
+        }
+        if (_isSearching) {
+          _stopSearch();
+          return;
+        }
+        if (_isSelectionMode) {
+          _exitSelectionMode();
+          return;
+        }
+      },
+      child: GradientScaffold(
+        appBarCustomHeader: _buildAppBarHeader(),
+        showBottomNavBar: !_isSelectionMode,
+        currentNavIndex: 2,
+        body: ResponsiveContainer(
+          maxWidth: 600,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final isDesktop = constraints.maxWidth >= 600;
+              final messageMaxWidth = isDesktop ? 480.0 : MediaQuery.of(context).size.width * 0.85;
+              final horizontalPadding = isDesktop ? 12.0 : 6.0;
 
-            final wallpaperUrl = _chatSettings['wallpaper_url']?.toString() ?? '';
-            final presetId = _chatSettings['theme_preset']?.toString() ??
-                PreferencesService.getChatThemePreset();
-            final activePreset = ChatThemePreset.getById(presetId);
-            final isDark = theme.brightness == Brightness.dark;
-            final isCustomImage = wallpaperUrl.isNotEmpty && !wallpaperUrl.startsWith('color:#');
+              final wallpaperUrl = _chatSettings['wallpaper_url']?.toString() ?? '';
+              final presetId = _chatSettings['theme_preset']?.toString() ??
+                  PreferencesService.getChatThemePreset();
+              final activePreset = ChatThemePreset.getById(presetId);
+              final isDark = theme.brightness == Brightness.dark;
+              final isCustomImage = wallpaperUrl.isNotEmpty && !wallpaperUrl.startsWith('color:#');
 
-            return Stack(
-              children: [
-                Positioned.fill(
-                  child: _buildChatWallpaper(
-                    wallpaperUrl: wallpaperUrl,
-                    isDark: isDark,
-                    activePreset: activePreset,
-                  ),
-                ),
-                if (isCustomImage && isDark)
+              return Stack(
+                children: [
                   Positioned.fill(
-                    child: Container(color: Colors.black.withValues(alpha: 0.20)),
+                    child: _buildChatWallpaper(
+                      wallpaperUrl: wallpaperUrl,
+                      isDark: isDark,
+                      activePreset: activePreset,
+                    ),
                   ),
-                Column(
-                  children: [
-                    _buildPinnedMessagesBar(theme),
+                  if (isCustomImage && isDark)
+                    Positioned.fill(
+                      child: Container(color: Colors.black.withValues(alpha: 0.20)),
+                    ),
+                  Column(
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOut,
+                        padding: _isSearching
+                            ? const EdgeInsets.fromLTRB(AppSpacing.base, AppSpacing.sm, AppSpacing.base, AppSpacing.sm)
+                            : EdgeInsets.zero,
+                        child: _isSearching
+                            ? _buildSearchField(theme)
+                            : const SizedBox.shrink(),
+                      ),
+                      _buildPinnedMessagesBar(theme),
                     _buildServiceRequestBanner(theme),
                     Expanded(
                       child: ListView.builder(
@@ -2893,7 +3007,8 @@ _buildSelectionActionBar(theme),
           },
         ),
       ),
-    );
+    ),
+  );
   }
 
   Color? _parseColor(String? hexString) {
@@ -3030,6 +3145,7 @@ _buildSelectionActionBar(theme),
   }
 
   Widget _buildFileAttachmentCard(ChatAttachment att, ChatMessage msg, ThemeData theme, Color textColor, Color iconColor, Color timeColor) {
+    final isMobile = !kIsWeb;
     final ext = att.fileName.contains('.') ? att.fileName.split('.').last.toUpperCase() : 'FILE';
     final sizeStr = att.fileSizeBytes != null && att.fileSizeBytes! > 0
         ? (att.fileSizeBytes! < 1024 * 1024
@@ -3043,53 +3159,45 @@ _buildSelectionActionBar(theme),
     return GestureDetector(
       onTap: () => _downloadFile(att),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 210, maxWidth: 260),
+        constraints: isMobile
+            ? const BoxConstraints(minWidth: 150, maxWidth: 210)
+            : const BoxConstraints(minWidth: 210, maxWidth: 260),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 1),
+          padding: EdgeInsets.symmetric(vertical: isMobile ? 1 : 2),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
-                width: 40,
-                height: 40,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
+                width: isMobile ? 34 : 40,
+                height: isMobile ? 34 : 40,
+                decoration: BoxDecoration(
+                  color: msg.isOwn || theme.brightness == Brightness.dark
+                      ? Colors.white
+                      : theme.colorScheme.primary.withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   Icons.insert_drive_file_rounded,
                   color: iconColor,
-                  size: 22,
+                  size: isMobile ? 18 : 22,
                 ),
               ),
-              const SizedBox(width: 8),
+              SizedBox(width: isMobile ? 7 : 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            att.fileName,
-                            style: TextStyle(
-                              color: textColor,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        IconButton(
-                          icon: Icon(Icons.more_vert, color: textColor.withValues(alpha: 0.85), size: 18),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                          onPressed: () => _downloadFile(att),
-                        ),
-                      ],
+                    Text(
+                      att.fileName,
+                      style: TextStyle(
+                        color: textColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: isMobile ? 12 : 13,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
                     Row(
@@ -3099,7 +3207,7 @@ _buildSelectionActionBar(theme),
                           subtitle,
                           style: TextStyle(
                             color: textColor.withValues(alpha: 0.75),
-                            fontSize: 11,
+                            fontSize: isMobile ? 10 : 11,
                             fontWeight: FontWeight.w400,
                           ),
                         ),
@@ -3134,17 +3242,36 @@ _buildSelectionActionBar(theme),
 
     final isDark = theme.brightness == Brightness.dark;
     final isBot = !msg.isOwn && (msg.senderId == null || msg.senderId == 0);
+    final isMobileApp = !kIsWeb;
 
-    final rawBubbleColor = msg.isOwn
-        ? (msg.isPending ? Colors.grey.shade500 : (customOwnColor ?? activePreset.ownBubbleGradient[0]))
-        : (isBot
-            ? (customBotColor ?? (isDark ? const Color(0xFF262C3A) : Colors.grey.shade100))
-            : (customOtherColor ?? (isDark ? activePreset.otherBubbleColor : activePreset.otherBubbleColorLight)));
+    // В мобильной версии приложения картинки и фото увеличены на 30% относительно прежних 50% (~65% от ширины)
+    final double imageMaxWidth = isMobileApp
+        ? (maxWidth * 0.65).clamp(180.0, 260.0)
+        : maxWidth;
+    final double imageMaxHeight = isMobileApp ? 340.0 : 500.0;
+
+    Color rawBubbleColor;
+    if (msg.isOwn) {
+      rawBubbleColor = msg.isPending
+          ? Colors.grey.shade500
+          : (customOwnColor ?? activePreset.ownBubbleGradient[0]);
+    } else if (isDark) {
+      rawBubbleColor = isBot
+          ? (customBotColor ?? const Color(0xFF262C3A))
+          : (customOtherColor ?? activePreset.otherBubbleColor);
+    } else {
+      // Светлая тема: оператор и бот ВСЕГДА на светлом пузыре!
+      rawBubbleColor = isBot
+          ? Colors.white
+          : (activePreset.otherBubbleColorLight.computeLuminance() > 0.55
+              ? activePreset.otherBubbleColorLight
+              : Colors.white);
+    }
 
     final textColor = msg.isOwn
         ? Colors.white
         : (rawBubbleColor.computeLuminance() > 0.55 ? Colors.black87 : Colors.white);
-    final timeColor = textColor.withValues(alpha: 0.70);
+    final timeColor = textColor.withValues(alpha: 0.65);
 
     final double bubbleRadius = (_chatSettings['bubble_radius'] is num
         ? (_chatSettings['bubble_radius'] as num).toDouble()
@@ -3163,7 +3290,9 @@ _buildSelectionActionBar(theme),
         ? Border.all(color: theme.colorScheme.primary, width: 2.0)
         : (isHighlighted
             ? Border.all(color: msg.isOwn ? Colors.white : theme.colorScheme.primary, width: 2.0)
-            : null);
+            : (!isDark && !msg.isOwn
+                ? Border.all(color: Colors.black.withValues(alpha: 0.05), width: 0.5)
+                : null));
 
     final List<BoxShadow> bubbleShadows = [
       BoxShadow(
@@ -3232,7 +3361,7 @@ _buildSelectionActionBar(theme),
               }
             },
             child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: maxWidth),
+              constraints: BoxConstraints(maxWidth: imageMaxWidth),
               child: Container(
                 margin: const EdgeInsets.only(bottom: 6),
                 decoration: BoxDecoration(
@@ -3248,19 +3377,53 @@ _buildSelectionActionBar(theme),
                         mainAxisSize: MainAxisSize.min,
                         children: msg.attachments.map((att) {
                           final heroTag = 'image_${msg.id}_${att.fileName}';
-                          return MouseRegion(
-                            cursor: SystemMouseCursors.click,
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () => _openFullscreenImage(att, heroTag, msg),
-                              child: Hero(
-                                tag: heroTag,
-                                child: (!kIsWeb && att.localPath != null && File(att.localPath!).existsSync())
-                                    ? Image.file(File(att.localPath!), fit: BoxFit.cover)
-                                    : IgnorePointer(
-                                        ignoring: kIsWeb,
-                                        child: AuthImage(url: att.fileUrl ?? '', fit: BoxFit.cover),
-                                      ),
+                          return ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: imageMaxWidth,
+                              maxHeight: imageMaxHeight,
+                            ),
+                            child: MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () => _openFullscreenImage(att, heroTag, msg),
+                                child: Hero(
+                                  tag: heroTag,
+                                  flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
+                                    if (FullscreenImageViewer.skipHeroAnimation) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    final Hero hero = flightDirection == HeroFlightDirection.push
+                                        ? (toHeroContext.widget as Hero)
+                                        : (fromHeroContext.widget as Hero);
+                                    return AnimatedBuilder(
+                                      animation: animation,
+                                      builder: (context, child) {
+                                        final radius = flightDirection == HeroFlightDirection.push
+                                            ? (1.0 - animation.value) * 12.0
+                                            : animation.value * 12.0;
+                                        return ClipRRect(
+                                          borderRadius: BorderRadius.circular(radius),
+                                          child: hero.child,
+                                        );
+                                      },
+                                    );
+                                  },
+                                  child: (!kIsWeb && att.localPath != null && File(att.localPath!).existsSync())
+                                      ? Image.file(
+                                          File(att.localPath!),
+                                          fit: BoxFit.cover,
+                                          width: isMobileApp ? imageMaxWidth : null,
+                                        )
+                                      : IgnorePointer(
+                                          ignoring: kIsWeb,
+                                          child: AuthImage(
+                                            url: att.fileUrl ?? '',
+                                            fit: BoxFit.cover,
+                                            width: isMobileApp ? imageMaxWidth : null,
+                                          ),
+                                        ),
+                                ),
                               ),
                             ),
                           );
@@ -3501,33 +3664,67 @@ _buildSelectionActionBar(theme),
                         final heroTag = 'image_${msg.id}_${att.fileName}';
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 8),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: MouseRegion(
-                              cursor: SystemMouseCursors.click,
-                              child: GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: () => _openFullscreenImage(att, heroTag, msg),
-                                child: Stack(
-                                  children: [
-                                    Hero(
-                                      tag: heroTag,
-                                      child: (!kIsWeb && att.localPath != null && File(att.localPath!).existsSync())
-                                          ? Image.file(File(att.localPath!), fit: BoxFit.cover)
-                                          : IgnorePointer(
-                                              ignoring: kIsWeb,
-                                              child: AuthImage(url: att.fileUrl ?? '', fit: BoxFit.cover),
-                                            ),
-                                    ),
-                                    Positioned.fill(
-                                      child: Material(
-                                        color: Colors.transparent,
-                                        child: InkWell(
-                                          onTap: () => _openFullscreenImage(att, heroTag, msg),
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: imageMaxWidth,
+                              maxHeight: imageMaxHeight,
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: MouseRegion(
+                                cursor: SystemMouseCursors.click,
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: () => _openFullscreenImage(att, heroTag, msg),
+                                  child: Stack(
+                                    children: [
+                                      Hero(
+                                        tag: heroTag,
+                                        flightShuttleBuilder: (flightContext, animation, flightDirection, fromHeroContext, toHeroContext) {
+                                          if (FullscreenImageViewer.skipHeroAnimation) {
+                                            return const SizedBox.shrink();
+                                          }
+                                          final Hero hero = flightDirection == HeroFlightDirection.push
+                                              ? (toHeroContext.widget as Hero)
+                                              : (fromHeroContext.widget as Hero);
+                                          return AnimatedBuilder(
+                                            animation: animation,
+                                            builder: (context, child) {
+                                              final radius = flightDirection == HeroFlightDirection.push
+                                                  ? (1.0 - animation.value) * 12.0
+                                                  : animation.value * 12.0;
+                                              return ClipRRect(
+                                                borderRadius: BorderRadius.circular(radius),
+                                                child: hero.child,
+                                              );
+                                            },
+                                          );
+                                        },
+                                        child: (!kIsWeb && att.localPath != null && File(att.localPath!).existsSync())
+                                            ? Image.file(
+                                                File(att.localPath!),
+                                                fit: BoxFit.cover,
+                                                width: isMobileApp ? imageMaxWidth : null,
+                                              )
+                                            : IgnorePointer(
+                                                ignoring: kIsWeb,
+                                                child: AuthImage(
+                                                  url: att.fileUrl ?? '',
+                                                  fit: BoxFit.cover,
+                                                  width: isMobileApp ? imageMaxWidth : null,
+                                                ),
+                                              ),
+                                      ),
+                                      Positioned.fill(
+                                        child: Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            onTap: () => _openFullscreenImage(att, heroTag, msg),
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -3611,8 +3808,10 @@ _buildSelectionActionBar(theme),
                                     Container(
                                       width: 40,
                                       height: 40,
-                                      decoration: const BoxDecoration(
-                                        color: Colors.white,
+                                      decoration: BoxDecoration(
+                                        color: msg.isOwn || theme.brightness == Brightness.dark
+                                            ? Colors.white
+                                            : theme.colorScheme.primary.withValues(alpha: 0.12),
                                         shape: BoxShape.circle,
                                       ),
                                       child: Icon(
@@ -3654,7 +3853,9 @@ _buildSelectionActionBar(theme),
                                     Container(
                                       padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 10),
                                       decoration: BoxDecoration(
-                                        color: Colors.white.withValues(alpha: 0.18),
+                                        color: msg.isOwn || theme.brightness == Brightness.dark
+                                            ? Colors.white.withValues(alpha: 0.18)
+                                            : Colors.black.withValues(alpha: 0.06),
                                         borderRadius: BorderRadius.circular(6),
                                       ),
                                       child: Row(

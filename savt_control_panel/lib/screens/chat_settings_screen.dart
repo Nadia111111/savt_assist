@@ -259,8 +259,8 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
       'name_color': _nameColorHex,
       'wallpaper_url': _wallpaperUrl,
       'own_bubble_color': _customOwnColor ?? _activePreset.ownBubbleHex,
-      'other_bubble_color': _customOtherColor ?? _activePreset.otherBubbleHex,
-      'bot_bubble_color': _customBotColor ?? '#2A2938',
+      if (_customOtherColor != null) 'other_bubble_color': _customOtherColor,
+      if (_customBotColor != null) 'bot_bubble_color': _customBotColor,
     };
 
     final Map<String, dynamic> serverPayload = {
@@ -273,8 +273,8 @@ class _ChatSettingsScreenState extends State<ChatSettingsScreen> {
           ? _wallpaperUrl
           : null,
       'own_bubble_color': _customOwnColor ?? _activePreset.ownBubbleHex,
-      'other_bubble_color': _customOtherColor ?? _activePreset.otherBubbleHex,
-      'bot_bubble_color': _customBotColor ?? '#2A2938',
+      if (_customOtherColor != null) 'other_bubble_color': _customOtherColor,
+      if (_customBotColor != null) 'bot_bubble_color': _customBotColor,
     };
 
     try {

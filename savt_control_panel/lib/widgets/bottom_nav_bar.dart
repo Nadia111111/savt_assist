@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import '../services/offline_service.dart';
 import '../screens/navigation_container.dart';
+import '../screens/fullscreen_image_viewer.dart';
 import '../main.dart';
 
 class BottomNavBar extends StatefulWidget {
@@ -619,12 +620,26 @@ class AppBottomNavBar extends StatelessWidget {
   });
 
   static void navigateToTab(BuildContext context, int index) {
-    AppNavState.instance.setTab(index);
     final state = MainNavigationContainer.globalKey.currentState;
     final nav =
         Navigator.maybeOf(context) ?? ControlPanelApp.navigatorKey.currentState;
 
     if (state != null && state.mounted) {
+      final isSameTab = state.currentIndex == index;
+      if (isSameTab) {
+        // Если нажата та же вкладка (например, "Чат" при открытом фото):
+        // Закрываем просмотр фото, плавно возвращая в чат, без сброса страницы
+        if (FullscreenImageViewer.activeRoute != null &&
+            FullscreenImageViewer.activeRoute!.isActive) {
+          nav?.pop();
+          return;
+        }
+        state.setTab(index);
+        return;
+      }
+
+      // Переход на ДРУГУЮ вкладку: мгновенно убираем просмотр фото без Hero и задержек
+      FullscreenImageViewer.dismissImmediately();
       if (nav != null && nav.canPop()) {
         nav.popUntil((route) =>
             route.isFirst ||
@@ -636,7 +651,12 @@ class AppBottomNavBar extends StatelessWidget {
             route.settings.name == '/about-us');
       }
       state.setTab(index);
+      AppNavState.instance.setTab(index);
+      Future.delayed(const Duration(milliseconds: 400), () {
+        FullscreenImageViewer.skipHeroAnimation = false;
+      });
     } else {
+      FullscreenImageViewer.dismissImmediately();
       final isGuest = tokenStorage.isGuestMode;
       String targetRoute = '/home';
       if (isGuest) {
@@ -662,6 +682,9 @@ class AppBottomNavBar extends StatelessWidget {
         targetRoute,
         (route) => false,
       );
+      Future.delayed(const Duration(milliseconds: 400), () {
+        FullscreenImageViewer.skipHeroAnimation = false;
+      });
       WidgetsBinding.instance.addPostFrameCallback((_) {
         MainNavigationContainer.globalKey.currentState?.setTab(index);
       });
@@ -672,6 +695,7 @@ class AppBottomNavBar extends StatelessWidget {
       {bool isAlreadyOnScanner = false}) async {
     if (isAlreadyOnScanner) return;
 
+    FullscreenImageViewer.dismissImmediately();
     final nav =
         Navigator.maybeOf(context) ?? ControlPanelApp.navigatorKey.currentState;
     final state = MainNavigationContainer.globalKey.currentState;
@@ -680,6 +704,9 @@ class AppBottomNavBar extends StatelessWidget {
           route.isFirst ||
           route.settings.name == '/home' ||
           route.settings.name == '/shu-list');
+      Future.delayed(const Duration(milliseconds: 400), () {
+        FullscreenImageViewer.skipHeroAnimation = false;
+      });
     }
     AppNavState.instance.setScannerActive(true);
     await nav?.pushNamed('/qr-scanner');
