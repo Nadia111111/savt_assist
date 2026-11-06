@@ -975,138 +975,138 @@ class _AuthPageState extends State<AuthPage>
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            final dialog = AlertDialog(
+            return Dialog(
               insetPadding: EdgeInsets.symmetric(
                 horizontal: isWeb ? 40 : 16,
                 vertical: isWeb ? 32 : 24,
               ),
-              contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20)),
-              title: const Text(
-                'Политика конфиденциальности',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.all(Radius.circular(20)),
               ),
-              content: ConstrainedBox(
+              backgroundColor: theme.dialogTheme.backgroundColor ??
+                  theme.colorScheme.surface,
+              clipBehavior: Clip.antiAlias,
+              child: ConstrainedBox(
                 constraints: BoxConstraints(
-                  maxWidth: isWeb ? 560 : double.infinity,
+                  maxWidth: isWeb ? 560 : 420,
                   maxHeight:
-                      MediaQuery.of(context).size.height * (isWeb ? 0.55 : 0.65),
+                      MediaQuery.of(context).size.height * (isWeb ? 0.6 : 0.75),
                 ),
-                child: SizedBox(
-                  width: isWeb ? 560 : double.infinity,
-                  child: SingleChildScrollView(
-                    padding: EdgeInsets.zero,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: List.generate(_policySections.length, (index) {
-                        final section = _policySections[index];
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 6),
-                          decoration: BoxDecoration(
-                            color: isDark
-                                ? Colors.white.withValues(alpha: 0.05)
-                                : Colors.black.withValues(alpha: 0.03),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Theme(
-                            data: theme.copyWith(
-                              dividerColor: Colors.transparent,
-                            ),
-                            child: ExpansionTile(
-                              key: PageStorageKey<int>(index),
-                              initiallyExpanded: expandedStates[index],
-                              onExpansionChanged: (expanded) {
-                                setDialogState(() {
-                                  expandedStates[index] = expanded;
-                                });
-                              },
-                              dense: true,
-                              visualDensity: VisualDensity.compact,
-                              tilePadding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 0),
-                              childrenPadding:
-                                  const EdgeInsets.fromLTRB(10, 0, 10, 10),
-                              title: Text(
-                                section['title']!,
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              children: [
-                                SelectableText(
-                                  section['content']!,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    fontSize: 12,
-                                    height: 1.4,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Политика конфиденциальности',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ) ??
+                            const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 18),
+                      ),
+                      const SizedBox(height: 12),
+                      Flexible(
+                        child: SingleChildScrollView(
+                          padding: EdgeInsets.zero,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: List.generate(_policySections.length, (index) {
+                              final section = _policySections[index];
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 6),
+                                child: Material(
+                                  color: isDark
+                                      ? Colors.white.withOpacity(0.06)
+                                      : Colors.black.withOpacity(0.04),
+                                  borderRadius: BorderRadius.circular(10),
+                                  clipBehavior: Clip.antiAlias,
+                                  child: Theme(
+                                    data: theme.copyWith(
+                                      dividerColor: Colors.transparent,
+                                    ),
+                                    child: ExpansionTile(
+                                      key: ValueKey<String>('policy_tile_$index'),
+                                      initiallyExpanded: expandedStates[index],
+                                      onExpansionChanged: (expanded) {
+                                        setDialogState(() {
+                                          expandedStates[index] = expanded;
+                                        });
+                                      },
+                                      dense: true,
+                                      visualDensity: VisualDensity.compact,
+                                      tilePadding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 0),
+                                      childrenPadding:
+                                          const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                                      title: Text(
+                                        section['title']!,
+                                        style: theme.textTheme.titleMedium?.copyWith(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      children: [
+                                        Text(
+                                          section['content']!,
+                                          style: theme.textTheme.bodyMedium?.copyWith(
+                                            fontSize: 12,
+                                            height: 1.45,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
-                              ],
-                            ),
+                              );
+                            }),
                           ),
-                        );
-                      }),
-                    ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: theme.colorScheme.primary,
+                          foregroundColor: theme.colorScheme.onPrimary,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'Согласен с политикой',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                        ),
+                        child: Text(
+                          'Не согласен',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: isDark ? Colors.red.shade300 : Colors.red.shade700,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-              actionsPadding: const EdgeInsets.fromLTRB(16, 6, 16, 14),
-              actions: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: theme.colorScheme.primary,
-                        foregroundColor: theme.colorScheme.onPrimary,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: const Text(
-                        'Согласен с политикой',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                      ),
-                      child: Text(
-                        'Не согласен',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: isDark ? Colors.red.shade300 : Colors.red.shade700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
             );
-
-            if (isWeb) {
-              return Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 640),
-                  child: dialog,
-                ),
-              );
-            }
-            return dialog;
           },
         );
       },
