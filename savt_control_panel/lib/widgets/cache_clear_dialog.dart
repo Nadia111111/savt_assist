@@ -191,7 +191,7 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
                     ),
                   ),
                 ),
-                _buildHeader(theme),
+                _buildHeader(theme, isDesktop: false),
                 const SizedBox(height: 14),
                 if (_isLoading)
                   const SizedBox(
@@ -205,10 +205,10 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          _buildSummaryBanner(theme, isDark),
-                          _buildCategorySectionHeader(theme),
-                          _buildGroupedCategories(theme, isDark),
-                          _buildInfoDisclaimer(theme),
+                          _buildSummaryBanner(theme, isDark, isDesktop: false),
+                          _buildCategorySectionHeader(theme, isDesktop: false),
+                          _buildGroupedCategories(theme, isDark, isDesktop: false),
+                          _buildInfoDisclaimer(theme, isDesktop: false),
                         ],
                       ),
                     ),
@@ -223,84 +223,93 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
       );
     }
 
-    // Режим диалога (для десктопа и планшетов)
+    // Режим диалога (для веба и десктопа) — увеличенный, просторный
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
       backgroundColor: theme.colorScheme.surface,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 32),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 460),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildHeader(theme),
-              const SizedBox(height: 16),
-              if (_isLoading)
-                const SizedBox(
-                  height: 180,
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else ...[
-                _buildSummaryBanner(theme, isDark),
-                _buildCategorySectionHeader(theme),
-                _buildGroupedCategories(theme, isDark),
-                _buildInfoDisclaimer(theme),
-                const SizedBox(height: 16),
-                _buildActionButtons(theme, isMobile: false),
+        constraints: const BoxConstraints(maxWidth: 580),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(32, 26, 32, 26),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildHeader(theme, isDesktop: true),
+                const SizedBox(height: 20),
+                if (_isLoading)
+                  const SizedBox(
+                    height: 220,
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else ...[
+                  _buildSummaryBanner(theme, isDark, isDesktop: true),
+                  _buildCategorySectionHeader(theme, isDesktop: true),
+                  _buildGroupedCategories(theme, isDark, isDesktop: true),
+                  _buildInfoDisclaimer(theme, isDesktop: true),
+                  const SizedBox(height: 6),
+                  _buildActionButtons(theme, isMobile: false),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildHeader(ThemeData theme) {
+  Widget _buildHeader(ThemeData theme, {required bool isDesktop}) {
     return Row(
       children: [
         Container(
-          padding: const EdgeInsets.all(9),
+          padding: EdgeInsets.all(isDesktop ? 12 : 9),
           decoration: BoxDecoration(
             color: theme.colorScheme.primary.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(isDesktop ? 14 : 12),
           ),
           child: Icon(
             Icons.cleaning_services_rounded,
             color: theme.colorScheme.primary,
-            size: 20,
+            size: isDesktop ? 24 : 20,
           ),
         ),
-        const SizedBox(width: 12),
-        const Expanded(
+        SizedBox(width: isDesktop ? 14 : 12),
+        Expanded(
           child: Text(
             'Очистка кэша',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              fontSize: isDesktop ? 21 : 18,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
         IconButton(
           onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.close_rounded),
+          icon: Icon(Icons.close_rounded, size: isDesktop ? 24 : 22),
           color: theme.colorScheme.onSurfaceVariant,
-          splashRadius: 20,
+          splashRadius: isDesktop ? 22 : 20,
           tooltip: 'Закрыть',
         ),
       ],
     );
   }
 
-  Widget _buildSummaryBanner(ThemeData theme, bool isDark) {
+  Widget _buildSummaryBanner(ThemeData theme, bool isDark,
+      {required bool isDesktop}) {
     final totalFormatted =
         AppCacheService.formatBytes(_breakdown?.totalBytes ?? 0);
     final selectedFormatted = AppCacheService.formatBytes(_selectedBytes);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      padding: EdgeInsets.symmetric(
+        horizontal: isDesktop ? 20 : 16,
+        vertical: isDesktop ? 16 : 13,
+      ),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E222D) : const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(isDesktop ? 18 : 16),
         border: Border.all(
           color: theme.colorScheme.outline.withValues(alpha: 0.08),
         ),
@@ -314,15 +323,15 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
                 Text(
                   'Всего в кэше',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: isDesktop ? 13 : 12,
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(height: 3),
+                SizedBox(height: isDesktop ? 4 : 3),
                 Text(
                   totalFormatted,
                   style: TextStyle(
-                    fontSize: 17,
+                    fontSize: isDesktop ? 20 : 17,
                     fontWeight: FontWeight.bold,
                     color: theme.colorScheme.onSurface,
                   ),
@@ -331,11 +340,11 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
             ),
           ),
           Container(
-            height: 32,
+            height: isDesktop ? 38 : 32,
             width: 1,
             color: theme.colorScheme.outline.withValues(alpha: 0.15),
           ),
-          const SizedBox(width: 16),
+          SizedBox(width: isDesktop ? 20 : 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -343,15 +352,15 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
                 Text(
                   'К удалению',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: isDesktop ? 13 : 12,
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(height: 3),
+                SizedBox(height: isDesktop ? 4 : 3),
                 Text(
                   selectedFormatted,
                   style: TextStyle(
-                    fontSize: 17,
+                    fontSize: isDesktop ? 20 : 17,
                     fontWeight: FontWeight.bold,
                     color: _selectedBytes > 0
                         ? const Color(0xFFEF4444)
@@ -366,16 +375,18 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
     );
   }
 
-  Widget _buildCategorySectionHeader(ThemeData theme) {
+  Widget _buildCategorySectionHeader(ThemeData theme,
+      {required bool isDesktop}) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 14, 4, 8),
+      padding: EdgeInsets.fromLTRB(
+          4, isDesktop ? 18 : 14, 4, isDesktop ? 10 : 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
             'Категории',
             style: TextStyle(
-              fontSize: 13,
+              fontSize: isDesktop ? 14.5 : 13,
               fontWeight: FontWeight.w600,
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -384,7 +395,10 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
             onPressed: _isClearing ? null : _toggleAll,
             style: TextButton.styleFrom(
               visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              padding: EdgeInsets.symmetric(
+                horizontal: isDesktop ? 10 : 8,
+                vertical: isDesktop ? 4 : 2,
+              ),
               minimumSize: Size.zero,
             ),
             child: Text(
@@ -392,7 +406,7 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
                   ? 'Снять все'
                   : 'Выбрать все',
               style: TextStyle(
-                fontSize: 12,
+                fontSize: isDesktop ? 13 : 12,
                 fontWeight: FontWeight.w600,
                 color: theme.colorScheme.primary,
               ),
@@ -403,11 +417,12 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
     );
   }
 
-  Widget _buildGroupedCategories(ThemeData theme, bool isDark) {
+  Widget _buildGroupedCategories(ThemeData theme, bool isDark,
+      {required bool isDesktop}) {
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E222D) : const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(isDesktop ? 18 : 16),
         border: Border.all(
           color: theme.colorScheme.outline.withValues(alpha: 0.1),
         ),
@@ -423,10 +438,11 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
             iconColor: const Color(0xFF3B82F6),
             value: _clearImages,
             onChanged: (val) => setState(() => _clearImages = val ?? false),
+            isDesktop: isDesktop,
           ),
           Divider(
             height: 1,
-            indent: 62,
+            indent: isDesktop ? 74 : 62,
             color: theme.colorScheme.outline.withValues(alpha: 0.08),
           ),
           _buildCategoryRow(
@@ -438,10 +454,11 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
             iconColor: const Color(0xFF10B981),
             value: _clearDatabase,
             onChanged: (val) => setState(() => _clearDatabase = val ?? false),
+            isDesktop: isDesktop,
           ),
           Divider(
             height: 1,
-            indent: 62,
+            indent: isDesktop ? 74 : 62,
             color: theme.colorScheme.outline.withValues(alpha: 0.08),
           ),
           _buildCategoryRow(
@@ -454,6 +471,7 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
             value: _clearOfflineData,
             onChanged: (val) =>
                 setState(() => _clearOfflineData = val ?? false),
+            isDesktop: isDesktop,
           ),
         ],
       ),
@@ -469,26 +487,30 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
     required Color iconColor,
     required bool value,
     required ValueChanged<bool?> onChanged,
+    required bool isDesktop,
   }) {
     final sizeFormatted = AppCacheService.formatBytes(sizeBytes);
 
     return InkWell(
       onTap: _isClearing ? null : () => onChanged(!value),
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(isDesktop ? 18 : 16),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: EdgeInsets.symmetric(
+          horizontal: isDesktop ? 18 : 14,
+          vertical: isDesktop ? 15 : 12,
+        ),
         child: Row(
           children: [
             Container(
-              width: 36,
-              height: 36,
+              width: isDesktop ? 44 : 36,
+              height: isDesktop ? 44 : 36,
               decoration: BoxDecoration(
                 color: iconColor.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(isDesktop ? 12 : 10),
               ),
-              child: Icon(icon, color: iconColor, size: 20),
+              child: Icon(icon, color: iconColor, size: isDesktop ? 23 : 20),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: isDesktop ? 14 : 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -497,16 +519,16 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
                   Text(
                     title,
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: isDesktop ? 15 : 14,
                       fontWeight: FontWeight.w600,
                       color: theme.colorScheme.onSurface,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  SizedBox(height: isDesktop ? 3 : 2),
                   Text(
                     subtitle,
                     style: TextStyle(
-                      fontSize: 11.5,
+                      fontSize: isDesktop ? 12.5 : 11.5,
                       color: theme.colorScheme.onSurfaceVariant,
                       height: 1.25,
                     ),
@@ -514,11 +536,11 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
                 ],
               ),
             ),
-            const SizedBox(width: 10),
+            SizedBox(width: isDesktop ? 14 : 10),
             Text(
               sizeFormatted,
               style: TextStyle(
-                fontSize: 13,
+                fontSize: isDesktop ? 14 : 13,
                 fontWeight: FontWeight.w600,
                 color: sizeBytes > 0
                     ? (value
@@ -527,12 +549,16 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
                     : theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(width: 6),
+            SizedBox(width: isDesktop ? 10 : 6),
             Checkbox(
               value: value,
               onChanged: _isClearing ? null : onChanged,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: isDesktop
+                  ? MaterialTapTargetSize.padded
+                  : MaterialTapTargetSize.shrinkWrap,
+              visualDensity: isDesktop
+                  ? VisualDensity.standard
+                  : VisualDensity.compact,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(4),
               ),
@@ -543,23 +569,28 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
     );
   }
 
-  Widget _buildInfoDisclaimer(ThemeData theme) {
+  Widget _buildInfoDisclaimer(ThemeData theme, {required bool isDesktop}) {
     return Padding(
-      padding: const EdgeInsets.only(top: 14, bottom: 18, left: 4, right: 4),
+      padding: EdgeInsets.only(
+        top: isDesktop ? 18 : 14,
+        bottom: isDesktop ? 22 : 18,
+        left: 4,
+        right: 4,
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
             Icons.info_outline_rounded,
-            size: 16,
+            size: isDesktop ? 18 : 16,
             color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: isDesktop ? 10 : 8),
           Expanded(
             child: Text(
               'Данные аккаунта не удалятся. Свежая информация автоматически загрузится с сервера при следующем открытии экранов.',
               style: TextStyle(
-                fontSize: 11.5,
+                fontSize: isDesktop ? 12.5 : 11.5,
                 color: theme.colorScheme.onSurfaceVariant,
                 height: 1.35,
               ),
@@ -571,23 +602,25 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
   }
 
   Widget _buildActionButtons(ThemeData theme, {required bool isMobile}) {
+    final isDesktop = !isMobile;
     final clearButton = SizedBox(
-      height: 48,
+      height: isDesktop ? 52 : 48,
       child: FilledButton(
         onPressed: (!_hasSelection || _isClearing) ? null : _performClear,
         style: FilledButton.styleFrom(
           backgroundColor: const Color(0xFFEF4444),
-          disabledBackgroundColor: const Color(0xFFEF4444).withValues(alpha: 0.3),
+          disabledBackgroundColor:
+              const Color(0xFFEF4444).withValues(alpha: 0.3),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(isDesktop ? 16 : 14),
           ),
           elevation: 0,
         ),
         child: _isClearing
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
+            ? SizedBox(
+                width: isDesktop ? 22 : 20,
+                height: isDesktop ? 22 : 20,
+                child: const CircularProgressIndicator(
                   strokeWidth: 2,
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
@@ -596,8 +629,8 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
                 _selectedBytes > 0
                     ? 'Очистить кэш (${AppCacheService.formatBytes(_selectedBytes)})'
                     : 'Очистить кэш',
-                style: const TextStyle(
-                  fontSize: 15,
+                style: TextStyle(
+                  fontSize: isDesktop ? 15.5 : 15,
                   fontWeight: FontWeight.w600,
                   color: Colors.white,
                 ),
@@ -615,20 +648,20 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
       children: [
         Expanded(
           child: SizedBox(
-            height: 48,
+            height: 52,
             child: TextButton(
               onPressed: _isClearing ? null : () => Navigator.pop(context),
               style: TextButton.styleFrom(
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(16),
                 ),
               ),
-              child: const Text('Отмена', style: TextStyle(fontSize: 14)),
+              child: const Text('Отмена', style: TextStyle(fontSize: 15)),
             ),
           ),
         ),
-        const SizedBox(width: 12),
-        Expanded(child: clearButton),
+        const SizedBox(width: 14),
+        Expanded(flex: 1, child: clearButton),
       ],
     );
   }
