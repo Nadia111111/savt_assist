@@ -34,7 +34,7 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
   Duration get _effectiveDuration =>
       widget.duration ??
       (kIsWeb
-          ? const Duration(milliseconds: 60000)
+          ? const Duration(milliseconds: 4500)
           : const Duration(milliseconds: 3200));
 
   @override
@@ -116,10 +116,10 @@ class _SavtAnimatedLogoState extends State<SavtAnimatedLogo>
         const double sLeftX = 0.0;
         final double avtTargetX = sW + gap;
 
-        // На Web используем 12-секундный комфортный тайминг, на Mobile - исходный 3.2-секундный
+        // На Web используем 4.5-секундный комфортный тайминг, на Mobile - исходный 3.2-секундный
         final bool isWeb = kIsWeb;
-        final double p1 = isWeb ? 0.16 : 0.20;
-        final double p2 = isWeb ? 0.40 : 0.45;
+        final double p1 = isWeb ? 0.18 : 0.20;
+        final double p2 = isWeb ? 0.42 : 0.45;
         final double p3 = isWeb ? 0.72 : 0.70;
         final double p4 = isWeb ? 0.90 : 0.90;
 

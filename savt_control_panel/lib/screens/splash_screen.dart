@@ -318,7 +318,7 @@ class _SplashScreenState extends State<SplashScreen> {
                         height: kIsWeb ? 82 : 68,
                         loop: true,
                         duration: kIsWeb
-                            ? const Duration(milliseconds: 60000)
+                            ? const Duration(milliseconds: 4500)
                             : const Duration(milliseconds: 3200),
                         onCycleCompleted: _onLogoCycleCompleted,
                       ),

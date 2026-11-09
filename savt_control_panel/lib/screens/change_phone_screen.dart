@@ -5,6 +5,7 @@ import '../theme/app_spacing.dart';
 import '../widgets/gradient_scaffold.dart';
 import '../widgets/skeletons.dart';
 import '../widgets/offline_aware_button.dart';
+import '../utils/phone_helper.dart';
 import '../main.dart'; // authService
 
 class ChangePhoneScreen extends StatefulWidget {
@@ -23,11 +24,9 @@ class _ChangePhoneScreenState extends State<ChangePhoneScreen> {
   String _currentPhone = '';
   Map<String, dynamic>? _activeRequest;
 
-  String _selectedCountryCode = '+375';
-  final List<Map<String, dynamic>> _countries = [
-    {'code': '+375', 'flag': '🇧🇾', 'length': 9, 'hint': '29XXXXXXX'},
-    {'code': '+7', 'flag': '🇷🇺', 'length': 10, 'hint': '9XXXXXXXXX'},
-  ];
+  String _selectedCountryCode = PhoneHelper.defaultCountryCode;
+  final List<Map<String, dynamic>> _countries =
+      PhoneHelper.countries.map((c) => c.toMap()).toList();
 
   @override
   void initState() {
@@ -68,20 +67,15 @@ class _ChangePhoneScreenState extends State<ChangePhoneScreen> {
   }
 
   Future<void> _submitRequest() async {
-    final currentCountry = _countries.firstWhere(
-      (c) => c['code'] == _selectedCountryCode,
-      orElse: () => _countries.first,
-    );
-    final int requiredLength = currentCountry['length'] as int;
-
-    final phoneDigits =
-        _phoneController.text.trim().replaceAll(RegExp(r'[^0-9]'), '');
-    if (phoneDigits.length != requiredLength) {
-      _showError('Номер телефона должен содержать $requiredLength цифр');
+    final error =
+        PhoneHelper.validate(_phoneController.text, _selectedCountryCode);
+    if (error != null) {
+      _showError(error);
       return;
     }
 
-    final fullPhone = '$_selectedCountryCode$phoneDigits';
+    final fullPhone = PhoneHelper.normalizeToE164(
+        _phoneController.text, _selectedCountryCode);
     final comment = _commentController.text.trim();
 
     setState(() => _isSubmitting = true);
@@ -555,14 +549,21 @@ class _ChangePhoneScreenState extends State<ChangePhoneScreen> {
               child: SizedBox(
                 height: 54,
                 child: TextFormField(
+                  key: ValueKey(_selectedCountryCode),
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
                   inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(requiredLength),
+                    PhoneInputFormatter(
+                      _selectedCountryCode,
+                      onCountryDetected: (code) {
+                        if (code != _selectedCountryCode) {
+                          setState(() => _selectedCountryCode = code);
+                        }
+                      },
+                    ),
                   ],
                   decoration: InputDecoration(
-                    hintText: hintText,
+                    hintText: PhoneHelper.getCountry(_selectedCountryCode).hint,
                     filled: true,
                     fillColor: theme.colorScheme.surfaceContainerLow,
                     contentPadding: const EdgeInsets.symmetric(

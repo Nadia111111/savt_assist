@@ -6,6 +6,7 @@ import '../widgets/animated_background.dart';
 import '../main.dart';
 import '../screens/password_reset_request_screen.dart';
 import '../widgets/bottom_nav_bar.dart';
+import '../utils/phone_helper.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -26,11 +27,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final FocusNode _newPasswordFocusNode = FocusNode();
   final FocusNode _confirmPasswordFocusNode = FocusNode();
 
-  String _selectedCountryCode = '+375';
-  final List<Map<String, dynamic>> _countries = [
-    {'code': '+375', 'name': '🇧🇾 Беларусь', 'flag': '🇧🇾', 'length': 9},
-    {'code': '+7', 'name': '🇷🇺 Россия', 'flag': '🇷🇺', 'length': 10},
-  ];
+  String _selectedCountryCode = PhoneHelper.defaultCountryCode;
+  final List<Map<String, dynamic>> _countries =
+      PhoneHelper.countries.map((c) => c.toMap()).toList();
 
   bool _isPasswordVisible = false;
   bool _isVerifyingCode = false;
@@ -41,19 +40,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       1; // 1 - ввод телефона, 2 - ввод кода, 3 - новый пароль
 
   String? _validatePhone(String? value) {
-    if (value == null || value.isEmpty) return 'Введите номер телефона';
-    final cleanNumber = value.replaceAll(RegExp(r'[^0-9]'), '');
-    int requiredLength = 9;
-    for (var country in _countries) {
-      if (country['code'] == _selectedCountryCode) {
-        requiredLength = country['length'];
-        break;
-      }
-    }
-    if (cleanNumber.length != requiredLength) {
-      return 'Введите $requiredLength цифр';
-    }
-    return null;
+    return PhoneHelper.validate(value, _selectedCountryCode);
   }
 
   String? _validatePassword(String? value) {
@@ -71,7 +58,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       return;
     }
 
-    final fullPhone = _selectedCountryCode + _phoneController.text.trim();
+    final fullPhone = PhoneHelper.normalizeToE164(
+        _phoneController.text, _selectedCountryCode);
 
     setState(() => _isLoading = true);
     try {
@@ -140,7 +128,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     }
 
     setState(() => _isResetting = true);
-    final fullPhone = _selectedCountryCode + _phoneController.text.trim();
+    final fullPhone = PhoneHelper.normalizeToE164(
+        _phoneController.text, _selectedCountryCode);
     final code = _smsCodeController.text.trim();
 
     try {
@@ -508,7 +497,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Widget _buildCountryDropdown() {
     final theme = Theme.of(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('Номер телефона',
+      Text('Страна',
           style: theme.textTheme.labelLarge?.copyWith(
               fontWeight: FontWeight.w500,
               color: theme.colorScheme.onSurfaceVariant)),
@@ -551,6 +540,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   Widget _buildPhoneField() {
     final theme = Theme.of(context);
+    final hint = PhoneHelper.getCountry(_selectedCountryCode).hint;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('Номер телефона',
           style: theme.textTheme.labelLarge?.copyWith(
@@ -558,12 +548,22 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               color: theme.colorScheme.onSurfaceVariant)),
       const SizedBox(height: 8),
       TextFormField(
+        key: ValueKey(_selectedCountryCode),
         controller: _phoneController,
         focusNode: _phoneFocusNode,
         keyboardType: TextInputType.phone,
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        inputFormatters: [
+          PhoneInputFormatter(
+            _selectedCountryCode,
+            onCountryDetected: (code) {
+              if (code != _selectedCountryCode) {
+                setState(() => _selectedCountryCode = code);
+              }
+            },
+          ),
+        ],
         decoration: InputDecoration(
-          hintText: 'Введите номер телефона',
+          hintText: hint,
           filled: true,
           fillColor: theme.colorScheme.surfaceContainerLow,
           border: OutlineInputBorder(

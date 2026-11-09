@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/auth_service.dart';
 import '../services/preferences_service.dart';
 import '../widgets/bottom_nav_bar.dart';
+import '../utils/phone_helper.dart';
 
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key});
@@ -95,26 +96,12 @@ class _AuthPageState extends State<AuthPage>
     },
   ];
 
-  String _selectedCountryCode = '+375';
-  final List<Map<String, dynamic>> _countries = [
-    {'code': '+375', 'name': '🇧🇾 Беларусь', 'flag': '🇧🇾', 'length': 9},
-    {'code': '+7', 'name': '🇷🇺 Россия', 'flag': '🇷🇺', 'length': 10},
-  ];
+  String _selectedCountryCode = PhoneHelper.defaultCountryCode;
+  final List<Map<String, dynamic>> _countries =
+      PhoneHelper.countries.map((c) => c.toMap()).toList();
 
   String? _validatePhone(String? value) {
-    if (value == null || value.isEmpty) return 'Введите номер телефона';
-    final cleanNumber = value.replaceAll(RegExp(r'[^0-9]'), '');
-    int requiredLength = 9;
-    for (var country in _countries) {
-      if (country['code'] == _selectedCountryCode) {
-        requiredLength = country['length'];
-        break;
-      }
-    }
-    if (cleanNumber.length != requiredLength) {
-      return 'Введите $requiredLength цифр';
-    }
-    return null;
+    return PhoneHelper.validate(value, _selectedCountryCode);
   }
 
   String? _validatePassword(String? value) {
@@ -341,9 +328,8 @@ class _AuthPageState extends State<AuthPage>
       _showErrorSnackBar(phoneError);
       return;
     }
-    final cleanPhoneDigits =
-        _contactPhoneController.text.replaceAll(RegExp(r'[^0-9]'), '');
-    final contactPhone = _selectedCountryCode + cleanPhoneDigits;
+    final contactPhone = PhoneHelper.normalizeToE164(
+        _contactPhoneController.text, _selectedCountryCode);
     if (_passwordController.text != _confirmPasswordController.text) {
       _showErrorSnackBar('Пароли не совпадают');
       return;
@@ -476,9 +462,8 @@ class _AuthPageState extends State<AuthPage>
         void Function(void Function()) setStateDialog) async {
       setStateDialog(() => isSubmittingRequest = true);
       try {
-        final cleanPhoneDigits =
-            _contactPhoneController.text.replaceAll(RegExp(r'[^0-9]'), '');
-        final phone = _selectedCountryCode + cleanPhoneDigits;
+        final phone = PhoneHelper.normalizeToE164(
+            _contactPhoneController.text, _selectedCountryCode);
         await authService.registerRequest(
           phone: phone,
           password: _passwordController.text,
@@ -920,9 +905,8 @@ class _AuthPageState extends State<AuthPage>
   }
 
   Future<void> _handleLogin() async {
-    final cleanLoginDigits =
-        _loginPhoneController.text.replaceAll(RegExp(r'[^0-9]'), '');
-    final fullPhone = _selectedCountryCode + cleanLoginDigits;
+    final fullPhone = PhoneHelper.normalizeToE164(
+        _loginPhoneController.text, _selectedCountryCode);
     if (fullPhone.isEmpty || _loginPasswordController.text.isEmpty) {
       _showErrorSnackBar('Заполните все поля');
       return;
@@ -1693,13 +1677,23 @@ class _AuthPageState extends State<AuthPage>
   Widget _buildPhoneField(
       {required TextEditingController controller,
       required FocusNode focusNode}) {
+    final hint = PhoneHelper.getCountry(_selectedCountryCode).hint;
     return TextFormField(
       key: ValueKey(_selectedCountryCode),
       controller: controller,
       focusNode: focusNode,
       keyboardType: TextInputType.phone,
-      inputFormatters: [PhoneInputFormatter(_selectedCountryCode)],
-      decoration: const InputDecoration(hintText: 'Введите номер'),
+      inputFormatters: [
+        PhoneInputFormatter(
+          _selectedCountryCode,
+          onCountryDetected: (code) {
+            if (code != _selectedCountryCode) {
+              setState(() => _selectedCountryCode = code);
+            }
+          },
+        ),
+      ],
+      decoration: InputDecoration(hintText: hint),
     );
   }
 
@@ -1868,61 +1862,6 @@ class _AuthPageState extends State<AuthPage>
                       letterSpacing: 0.3)),
         ),
       ),
-    );
-  }
-}
-
-class PhoneInputFormatter extends TextInputFormatter {
-  final String countryCode;
-  PhoneInputFormatter(this.countryCode);
-
-  @override
-  TextEditingValue formatEditUpdate(
-      TextEditingValue oldValue, TextEditingValue newValue) {
-    final text = newValue.text;
-    final clean = text.replaceAll(RegExp(r'[^0-9]'), '');
-
-    String formatted = '';
-
-    if (countryCode == '+375') {
-      final digits = clean.substring(0, clean.length > 9 ? 9 : clean.length);
-      final buffer = StringBuffer();
-      if (digits.isNotEmpty) buffer.write('(');
-
-      if (digits.length <= 7) {
-        // Local 7-digit format: (XXX)-XX-XX
-        for (int i = 0; i < digits.length; i++) {
-          if (i == 3) buffer.write(')-');
-          if (i == 5) buffer.write('-');
-          buffer.write(digits[i]);
-        }
-      } else {
-        // Mobile 9-digit format: (XX) XXX-XX-XX
-        for (int i = 0; i < digits.length; i++) {
-          if (i == 2) buffer.write(') ');
-          if (i == 5) buffer.write('-');
-          if (i == 7) buffer.write('-');
-          buffer.write(digits[i]);
-        }
-      }
-      formatted = buffer.toString();
-    } else {
-      // Russia: (XXX) XXX-XX-XX
-      final digits = clean.substring(0, clean.length > 10 ? 10 : clean.length);
-      final buffer = StringBuffer();
-      if (digits.isNotEmpty) buffer.write('(');
-      for (int i = 0; i < digits.length; i++) {
-        if (i == 3) buffer.write(') ');
-        if (i == 6) buffer.write('-');
-        if (i == 8) buffer.write('-');
-        buffer.write(digits[i]);
-      }
-      formatted = buffer.toString();
-    }
-
-    return TextEditingValue(
-      text: formatted,
-      selection: TextSelection.collapsed(offset: formatted.length),
     );
   }
 }

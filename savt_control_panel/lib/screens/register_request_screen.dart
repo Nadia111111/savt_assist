@@ -5,6 +5,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../theme/app_spacing.dart';
 import '../widgets/animated_background.dart';
 import '../widgets/bottom_nav_bar.dart';
+import '../utils/phone_helper.dart';
 import '../main.dart';
 
 class RegisterRequestScreen extends StatefulWidget {
@@ -31,11 +32,9 @@ class _RegisterRequestScreenState extends State<RegisterRequestScreen> {
   final FocusNode _contactPhoneFocusNode = FocusNode();
   final FocusNode _userCommentFocusNode = FocusNode();
 
-  String _selectedCountryCode = '+375';
-  final List<Map<String, dynamic>> _countries = [
-    {'code': '+375', 'name': '🇧🇾 Беларусь', 'flag': '🇧🇾', 'length': 9},
-    {'code': '+7', 'name': '🇷🇺 Россия', 'flag': '🇷🇺', 'length': 10},
-  ];
+  String _selectedCountryCode = PhoneHelper.defaultCountryCode;
+  final List<Map<String, dynamic>> _countries =
+      PhoneHelper.countries.map((c) => c.toMap()).toList();
 
   String _userType = 'individual';
   bool _isPasswordVisible = false;
@@ -43,19 +42,7 @@ class _RegisterRequestScreenState extends State<RegisterRequestScreen> {
   bool _isSubmitted = false;
 
   String? _validatePhone(String? value) {
-    if (value == null || value.isEmpty) return 'Введите номер телефона';
-    final cleanNumber = value.replaceAll(RegExp(r'[^0-9]'), '');
-    int requiredLength = 9;
-    for (var country in _countries) {
-      if (country['code'] == _selectedCountryCode) {
-        requiredLength = country['length'];
-        break;
-      }
-    }
-    if (cleanNumber.length != requiredLength) {
-      return 'Введите $requiredLength цифр';
-    }
-    return null;
+    return PhoneHelper.validate(value, _selectedCountryCode);
   }
 
   String? _validatePassword(String? value) {
@@ -114,17 +101,18 @@ class _RegisterRequestScreenState extends State<RegisterRequestScreen> {
       final contactError = _validatePhone(_contactPhoneController.text);
       if (contactError != null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(contactError), backgroundColor: Colors.red),
+          SnackBar(content: Text('Контактный телефон: $contactError'), backgroundColor: Colors.red),
         );
         return;
       }
-      final cleanDigits = _contactPhoneController.text.replaceAll(RegExp(r'[^0-9]'), '');
-      contactPhone = _selectedCountryCode + cleanDigits;
+      contactPhone = PhoneHelper.normalizeToE164(
+          _contactPhoneController.text, _selectedCountryCode);
     }
 
     setState(() => _isLoading = true);
 
-    final fullPhone = _selectedCountryCode + _phoneController.text.trim();
+    final fullPhone = PhoneHelper.normalizeToE164(
+        _phoneController.text, _selectedCountryCode);
 
     try {
       await authService.registerRequest(
@@ -507,7 +495,7 @@ class _RegisterRequestScreenState extends State<RegisterRequestScreen> {
   Widget _buildCountryDropdown() {
     final theme = Theme.of(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('Номер телефона',
+      Text('Страна',
           style: theme.textTheme.labelLarge?.copyWith(
               fontWeight: FontWeight.w500,
               color: theme.colorScheme.onSurfaceVariant)),
@@ -554,6 +542,7 @@ class _RegisterRequestScreenState extends State<RegisterRequestScreen> {
     required String label,
   }) {
     final theme = Theme.of(context);
+    final hint = PhoneHelper.getCountry(_selectedCountryCode).hint;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(label,
           style: theme.textTheme.labelLarge?.copyWith(
@@ -561,12 +550,22 @@ class _RegisterRequestScreenState extends State<RegisterRequestScreen> {
               color: theme.colorScheme.onSurfaceVariant)),
       const SizedBox(height: 8),
       TextFormField(
+        key: ValueKey('phone_${controller.hashCode}_$_selectedCountryCode'),
         controller: controller,
         focusNode: focusNode,
         keyboardType: TextInputType.phone,
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        inputFormatters: [
+          PhoneInputFormatter(
+            _selectedCountryCode,
+            onCountryDetected: (code) {
+              if (code != _selectedCountryCode) {
+                setState(() => _selectedCountryCode = code);
+              }
+            },
+          ),
+        ],
         decoration: InputDecoration(
-          hintText: 'Введите номер телефона',
+          hintText: hint,
           filled: true,
           fillColor: theme.colorScheme.surfaceContainerLow,
           border: OutlineInputBorder(
