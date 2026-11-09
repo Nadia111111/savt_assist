@@ -2612,6 +2612,13 @@ Future<void> _deleteSelectedMessages() async {
   }
 
   Widget _buildAppBarHeader() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWebOrDesktop = (kIsWeb && screenWidth > 600) || screenWidth >= 900;
+
+    if (isWebOrDesktop) {
+      return _buildAppBarHeaderContent();
+    }
+
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 600),
@@ -2627,6 +2634,7 @@ Future<void> _deleteSelectedMessages() async {
         children: [
           IconButton(
             icon: const Icon(Icons.close, color: Colors.white),
+            tooltip: 'Отменить выбор',
             onPressed: _exitSelectionMode,
           ),
           Expanded(
@@ -2646,6 +2654,7 @@ Future<void> _deleteSelectedMessages() async {
       children: [
         IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 18),
+          tooltip: 'Назад',
           onPressed: () => Navigator.pop(context),
         ),
         Expanded(
@@ -2686,11 +2695,8 @@ Future<void> _deleteSelectedMessages() async {
           ),
         ),
         IconButton(
-          icon: const Icon(Icons.settings, color: Colors.white),
-          onPressed: _openChatSettings,
-        ),
-        IconButton(
           icon: Icon(_isSearching ? Icons.close : Icons.search, color: Colors.white),
+          tooltip: _isSearching ? 'Закрыть поиск' : 'Поиск',
           onPressed: () {
             if (_isSearching) {
               _stopSearch();
@@ -2698,6 +2704,11 @@ Future<void> _deleteSelectedMessages() async {
               _startSearch();
             }
           },
+        ),
+        IconButton(
+          icon: const Icon(Icons.settings, color: Colors.white),
+          tooltip: 'Настройки чата',
+          onPressed: _openChatSettings,
         ),
       ],
     );
