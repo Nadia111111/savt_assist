@@ -77,6 +77,9 @@ class MainNavigationContainerState extends State<MainNavigationContainer>
   void setTab(int index) {
     if (!mounted || _isPageAnimating) return;
 
+    // Всегда синхронизируем состояние глобальной нижней панели
+    AppNavState.instance.setTab(index);
+
     // Если нажимаем на уже активную вкладку - скроллим наверх
     if (_currentIndex == index) {
       if (_isGuestMode) {
@@ -113,7 +116,6 @@ class MainNavigationContainerState extends State<MainNavigationContainer>
     setState(() {
       _currentIndex = index;
     });
-    AppNavState.instance.setTab(index);
   }
 
   void refreshChatsList() {

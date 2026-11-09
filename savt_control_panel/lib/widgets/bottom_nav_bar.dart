@@ -431,6 +431,10 @@ class AppNavState extends ChangeNotifier {
     } else {
       _isVisible = !_isRouteExcluded;
       _isScannerActive = false;
+      final containerState = MainNavigationContainer.globalKey.currentState;
+      if (containerState != null && containerState.mounted) {
+        _currentIndex = containerState.currentIndex;
+      }
     }
     _notifySafely();
   }
@@ -491,7 +495,14 @@ class AppRouteObserver extends NavigatorObserver {
         AppNavState.instance.setScannerActive(true);
       } else {
         AppNavState.instance.setScannerActive(false);
-        if (name == '/chats' ||
+        if (name == '/home' || name == '/shu-list') {
+          final containerState = MainNavigationContainer.globalKey.currentState;
+          if (containerState != null && containerState.mounted) {
+            AppNavState.instance.setTab(containerState.currentIndex);
+          } else {
+            AppNavState.instance.setTab(0);
+          }
+        } else if (name == '/chats' ||
             name.startsWith('/chat/') ||
             name.startsWith('/chat-settings') ||
             name == '/search-messages' ||
@@ -506,9 +517,7 @@ class AppRouteObserver extends NavigatorObserver {
             name == '/notifications' ||
             name == '/favorites') {
           AppNavState.instance.setTab(3);
-        } else if (name == '/home' ||
-            name == '/shu-list' ||
-            name.startsWith('/shu-detail/') ||
+        } else if (name.startsWith('/shu-detail/') ||
             name == '/requests-hub' ||
             name == '/my-requests' ||
             name == '/reclamations' ||
@@ -634,6 +643,7 @@ class AppBottomNavBar extends StatelessWidget {
           nav?.pop();
           return;
         }
+        AppNavState.instance.setTab(index);
         state.setTab(index);
         return;
       }
