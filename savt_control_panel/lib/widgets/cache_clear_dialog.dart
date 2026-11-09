@@ -605,16 +605,15 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
     final isDesktop = !isMobile;
     final clearButton = SizedBox(
       height: isDesktop ? 52 : 48,
-      child: FilledButton(
+      child: TextButton(
         onPressed: (!_hasSelection || _isClearing) ? null : _performClear,
-        style: FilledButton.styleFrom(
-          backgroundColor: const Color(0xFFEF4444),
-          disabledBackgroundColor:
-              const Color(0xFFEF4444).withValues(alpha: 0.3),
+        style: TextButton.styleFrom(
+          foregroundColor: const Color(0xFFEF4444),
+          disabledForegroundColor:
+              const Color(0xFFEF4444).withValues(alpha: 0.35),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(isDesktop ? 16 : 14),
           ),
-          elevation: 0,
         ),
         child: _isClearing
             ? SizedBox(
@@ -622,7 +621,7 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
                 height: isDesktop ? 22 : 20,
                 child: const CircularProgressIndicator(
                   strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFEF4444)),
                 ),
               )
             : Text(
@@ -630,9 +629,11 @@ class _CacheClearDialogState extends State<CacheClearDialog> {
                     ? 'Очистить кэш (${AppCacheService.formatBytes(_selectedBytes)})'
                     : 'Очистить кэш',
                 style: TextStyle(
-                  fontSize: isDesktop ? 15.5 : 15,
+                  fontSize: isDesktop ? 16 : 15,
                   fontWeight: FontWeight.w600,
-                  color: Colors.white,
+                  color: (!_hasSelection || _isClearing)
+                      ? const Color(0xFFEF4444).withValues(alpha: 0.35)
+                      : const Color(0xFFEF4444),
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
