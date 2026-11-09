@@ -28,22 +28,22 @@ class PhoneCountry {
 class PhoneHelper {
   static const List<PhoneCountry> countries = [
     PhoneCountry(
-      code: '+7',
-      name: '🇷🇺 Россия',
-      flag: '🇷🇺',
-      nationalLength: 10,
-      hint: '(9XX) XXX-XX-XX',
-    ),
-    PhoneCountry(
       code: '+375',
       name: '🇧🇾 Беларусь',
       flag: '🇧🇾',
       nationalLength: 9,
       hint: '(XX) XXX-XX-XX',
     ),
+    PhoneCountry(
+      code: '+7',
+      name: '🇷🇺 Россия',
+      flag: '🇷🇺',
+      nationalLength: 10,
+      hint: '(9XX) XXX-XX-XX',
+    ),
   ];
 
-  static const String defaultCountryCode = '+7';
+  static const String defaultCountryCode = '+375';
 
   static PhoneCountry getCountry(String? code) {
     return countries.firstWhere(
@@ -159,11 +159,13 @@ class PhoneInputFormatter extends TextInputFormatter {
     // Автоопределение страны при вставке полного номера
     if (onCountryDetected != null) {
       final cleanDigits = text.replaceAll(RegExp(r'[^0-9]'), '');
-      if (cleanDigits.startsWith('375') &&
-          cleanDigits.length >= 11 &&
+      if ((cleanDigits.startsWith('375') && cleanDigits.length >= 11 ||
+              cleanDigits.startsWith('80') && cleanDigits.length == 11) &&
           countryCode != '+375') {
         onCountryDetected!('+375');
-      } else if ((cleanDigits.startsWith('7') || cleanDigits.startsWith('8')) &&
+      } else if ((cleanDigits.startsWith('7') ||
+              (cleanDigits.startsWith('8') &&
+                  !cleanDigits.startsWith('80'))) &&
           cleanDigits.length == 11 &&
           countryCode != '+7') {
         onCountryDetected!('+7');
