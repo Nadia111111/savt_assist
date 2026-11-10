@@ -104,6 +104,30 @@ class ApiClient {
           options.headers.remove('Authorization');
         }
 
+        // Шаг 3: Все остальные запросы (не загрузки) принимают тело не больше 2 МБ.
+        final isUploadEndpoint = path.startsWith('/upload/') || options.path.startsWith('/upload/');
+        if (!isUploadEndpoint && options.data != null) {
+          int bodySize = 0;
+          if (options.data is String) {
+            bodySize = (options.data as String).length;
+          } else if (options.data is List<int>) {
+            bodySize = (options.data as List<int>).length;
+          } else if (options.data is Map) {
+            try {
+              bodySize = options.data.toString().length;
+            } catch (_) {}
+          }
+          if (bodySize > 2 * 1024 * 1024) {
+            return handler.reject(
+              DioException(
+                requestOptions: options,
+                error: 'Размер запроса превышает 2 МБ',
+                type: DioExceptionType.unknown,
+              ),
+            );
+          }
+        }
+
         debugPrint('🔵 [API] ${options.method} ${options.uri}');
         if (options.data != null) {
           debugPrint('📦 [API] Data: ${options.data}');

@@ -37,6 +37,7 @@ class _AttachmentItem {
   String? fileUrl;
   bool isUploading;
   String? error;
+  DateTime uploadedAt;
 
   _AttachmentItem({
     required this.localPath,
@@ -44,7 +45,8 @@ class _AttachmentItem {
     required this.fileSizeBytes,
     required this.mimeType,
     this.isUploading = false,
-  });
+    DateTime? uploadedAt,
+  }) : uploadedAt = uploadedAt ?? DateTime.now();
 }
 
 class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
@@ -179,6 +181,11 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
 
   Future<void> _pickAttachment(ImageSource source) async {
     try {
+      if (_attachments.length >= 20) {
+        _showError('Максимальное количество вложений — 20');
+        return;
+      }
+
       final XFile? file = await _imagePicker.pickImage(
         source: source,
         imageQuality: 85,
@@ -187,6 +194,16 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
 
       final ioFile = File(file.path);
       final size = await ioFile.length();
+      final bool isVid = UploadService.isVideo(file.path);
+      if (isVid && size > UploadService.maxVideoSizeBytes) {
+        _showError('Файл слишком большой. Максимальный размер видео — 100 МБ');
+        return;
+      }
+      if (!isVid && size > UploadService.maxFileSizeBytes) {
+        _showError('Файл слишком большой. Максимальный размер файла — 30 МБ');
+        return;
+      }
+
       final name = file.name.isNotEmpty ? file.name : file.path.split(Platform.pathSeparator).last;
       final mime = _detectMimeType(file.path);
 
@@ -210,6 +227,11 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
 
   Future<void> _pickDocument() async {
     try {
+      if (_attachments.length >= 20) {
+        _showError('Максимальное количество вложений — 20');
+        return;
+      }
+
       final result = await FilePicker.pickFiles(
         allowMultiple: true,
         type: FileType.custom,
@@ -220,8 +242,23 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
 
       for (final f in result.files) {
         if (f.path == null) continue;
+        if (_attachments.length >= 20) {
+          _showError('Достигнут предел в 20 вложений');
+          break;
+        }
+
         final name = f.name;
         final size = f.size;
+        final bool isVid = UploadService.isVideo(f.path!);
+        if (isVid && size > UploadService.maxVideoSizeBytes) {
+          _showError('Файл $name слишком большой (максимум 100 МБ для видео)');
+          continue;
+        }
+        if (!isVid && size > UploadService.maxFileSizeBytes) {
+          _showError('Файл $name слишком большой (максимум 30 МБ)');
+          continue;
+        }
+
         final mime = _detectMimeType(f.path!);
 
         final item = _AttachmentItem(
@@ -409,6 +446,23 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
     setState(() => _isSubmitting = true);
 
     try {
+      // Шаг 5: Черновики с вложениями старше 7 дней считаем устаревшими и перезагружаем
+      for (final item in _attachments) {
+        final bool isExpired = DateTime.now().difference(item.uploadedAt).inDays >= 7;
+        if (item.fileUrl == null || isExpired) {
+          try {
+            final newUrl = await uploadService.uploadAttachment(item.localPath);
+            item.fileUrl = newUrl;
+            item.uploadedAt = DateTime.now();
+            item.error = null;
+          } catch (uploadErr) {
+            _showError('Файл ${item.fileName} недоступен. Прикрепите его заново.');
+            setState(() => _isSubmitting = false);
+            return;
+          }
+        }
+      }
+
       final attachmentsPayload = _attachments
           .where((a) => a.fileUrl != null && a.fileUrl!.isNotEmpty)
           .map((a) => {
@@ -492,7 +546,14 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isSubmitting = false);
-        _showError(e.toString());
+        final errLower = e.toString().toLowerCase();
+        if (errLower.contains('файл недоступен') ||
+            errLower.contains('not found') ||
+            errLower.contains('404')) {
+          _showError('Один из файлов недоступен. Пожалуйста, прикрепите файлы заново.');
+        } else {
+          _showError(e.toString());
+        }
       }
     }
   }
@@ -546,6 +607,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
                     TextFormField(
                       controller: _descriptionController,
                       maxLines: 5,
+                      maxLength: 5000,
                       validator: (v) {
                         if (v == null || v.trim().isEmpty) {
                           return 'Обязательное поле: опишите проблему';
@@ -564,6 +626,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
                     TextFormField(
                       controller: _occurrenceConditionsController,
                       maxLines: 3,
+                      maxLength: 2000,
                       decoration: const InputDecoration(
                         labelText: 'Условия проявления (опционально)',
                         hintText:
@@ -573,6 +636,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _errorCodesController,
+                      maxLength: 1000,
                       decoration: const InputDecoration(
                         labelText: 'Коды ошибок / индикация (опционально)',
                         hintText: 'Например: E-12, авария ПЧ F0002',
@@ -593,6 +657,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
                   children: [
                     TextFormField(
                       controller: _contractNumberController,
+                      maxLength: 255,
                       decoration: const InputDecoration(
                         labelText: 'Номер договора',
                         hintText: 'Например: Д-45/2026',
@@ -602,6 +667,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _orderNumberController,
+                      maxLength: 255,
                       decoration: const InputDecoration(
                         labelText: 'Номер заказа / счёта',
                         hintText: 'Например: З-102',
@@ -611,6 +677,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _ttnNumberController,
+                      maxLength: 255,
                       decoration: const InputDecoration(
                         labelText: 'Номер ТТН / CMR',
                         hintText: 'Например: ТТН-778 или CMR-0091',
@@ -631,6 +698,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
                   children: [
                     TextFormField(
                       controller: _contactNameController,
+                      maxLength: 255,
                       validator: (v) => v == null || v.trim().isEmpty
                           ? 'Укажите контактное лицо'
                           : null,
@@ -643,6 +711,8 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
                     TextFormField(
                       controller: _contactPhoneController,
                       keyboardType: TextInputType.phone,
+                      maxLength: 32,
+                      buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
                       validator: (v) => v == null || v.trim().isEmpty
                           ? 'Укажите контактный телефон'
                           : null,
@@ -655,6 +725,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
                     TextFormField(
                       controller: _contactEmailController,
                       keyboardType: TextInputType.emailAddress,
+                      maxLength: 255,
                       validator: (v) {
                         if (v != null && v.trim().isNotEmpty) {
                           if (!v.contains('@') || !v.contains('.')) {
@@ -671,6 +742,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _customerNameController,
+                      maxLength: 255,
                       decoration: const InputDecoration(
                         labelText: 'Организация / Заказчик (если подаёте от третьего лица)',
                         hintText: 'Например: ООО Ромашка',
@@ -858,6 +930,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
           : 'Например: AL-2026-014';
       return TextFormField(
         controller: _serialNumberController,
+        maxLength: 255,
         validator: (v) => v == null || v.trim().isEmpty
             ? 'Укажите заводской номер'
             : null,
@@ -875,6 +948,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
         children: [
           TextFormField(
             controller: _componentNameController,
+            maxLength: 255,
             validator: (v) => v == null || v.trim().isEmpty
                 ? 'Укажите наименование детали'
                 : null,
@@ -887,6 +961,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
           const SizedBox(height: 12),
           TextFormField(
             controller: _modelController,
+            maxLength: 255,
             validator: (v) => v == null || v.trim().isEmpty
                 ? 'Укажите модель детали'
                 : null,
@@ -899,6 +974,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
           const SizedBox(height: 12),
           TextFormField(
             controller: _articleController,
+            maxLength: 255,
             validator: (v) => v == null || v.trim().isEmpty
                 ? 'Укажите артикул детали'
                 : null,
@@ -911,6 +987,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
           const SizedBox(height: 12),
           TextFormField(
             controller: _componentSerialController,
+            maxLength: 255,
             validator: (v) => v == null || v.trim().isEmpty
                 ? 'Укажите серийный номер детали'
                 : null,
@@ -930,6 +1007,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
         children: [
           TextFormField(
             controller: _softwareNameController,
+            maxLength: 255,
             decoration: const InputDecoration(
               labelText: 'Наименование ПО / Модуля (опционально)',
               hintText: 'Например: Прошивка контроллера PLC-10',
@@ -939,6 +1017,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
           const SizedBox(height: 12),
           TextFormField(
             controller: _softwareVersionController,
+            maxLength: 255,
             decoration: const InputDecoration(
               labelText: 'Версия ПО (опционально)',
               hintText: 'Например: v2.4.1-b12',
@@ -948,6 +1027,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
           const SizedBox(height: 12),
           TextFormField(
             controller: _softwareDescController,
+            maxLength: 500,
             decoration: const InputDecoration(
               labelText: 'Окружение / Описание (опционально)',
               hintText: 'Например: Панель Weintek MT8071iE',
@@ -964,6 +1044,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
         children: [
           TextFormField(
             controller: _docNameController,
+            maxLength: 255,
             decoration: const InputDecoration(
               labelText: 'Название документа (опционально)',
               hintText: 'Например: Руководство по эксплуатации, Эл. схема',
@@ -973,6 +1054,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
           const SizedBox(height: 12),
           TextFormField(
             controller: _docCodeController,
+            maxLength: 255,
             decoration: const InputDecoration(
               labelText: 'Шифр / Обозначение документа (опционально)',
               hintText: 'Например: Э3.04.112-РЭ',
@@ -982,6 +1064,7 @@ class _CreateReclamationScreenState extends State<CreateReclamationScreen> {
           const SizedBox(height: 12),
           TextFormField(
             controller: _docSectionController,
+            maxLength: 255,
             decoration: const InputDecoration(
               labelText: 'Лист / Страница / Раздел (опционально)',
               hintText: 'Например: Стр. 14, Раздел 3.2',

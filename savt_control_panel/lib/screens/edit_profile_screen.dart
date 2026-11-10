@@ -214,6 +214,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               const SizedBox(height: AppSpacing.xl),
                TextFormField(
                 controller: _fullNameController,
+                maxLength: 255,
                 decoration: const InputDecoration(
                   labelText: 'ФИО',
                   prefixIcon: Icon(Icons.person_outline),
@@ -228,6 +229,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               const SizedBox(height: AppSpacing.base),
                TextFormField(
                 controller: _emailController,
+                maxLength: 255,
                 keyboardType: TextInputType.emailAddress,
                 autovalidateMode: AutovalidateMode.onUserInteraction,
                 decoration: const InputDecoration(
@@ -249,6 +251,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                TextFormField(
                 controller: _contactPhoneController,
                 keyboardType: TextInputType.phone,
+                maxLength: 32,
+                buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
                 decoration: const InputDecoration(
                   labelText: 'Рабочий телефон',
                   hintText: 'Введите номер для связи',
@@ -270,6 +274,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 const SizedBox(height: AppSpacing.base),
                 TextFormField(
                   controller: _organizationController,
+                  maxLength: 255,
                   decoration: const InputDecoration(
                     labelText: 'Название организации',
                     prefixIcon: Icon(Icons.business_outlined),

@@ -91,7 +91,7 @@ class _PasswordResetRequestScreenState extends State<PasswordResetRequestScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Заявка отправлена, ожидайте'),
+            content: Text('Заявка отправлена. Администратор рассмотрит её, о решении сообщим'),
             backgroundColor: Colors.green,
           ),
         );
@@ -212,7 +212,7 @@ class _PasswordResetRequestScreenState extends State<PasswordResetRequestScreen>
                                const SizedBox(height: 8),
                               Text(
                                 _isSubmitted
-                                    ? 'Ваша заявка находится на рассмотрении. После одобрения вы получите push-уведомление.'
+                                    ? 'Заявка отправлена. Администратор рассмотрит её, о решении сообщим.'
                                     : 'Для пользователей без Telegram',
                                 textAlign: TextAlign.start,
                                 style: theme.textTheme.bodyMedium
@@ -246,6 +246,7 @@ class _PasswordResetRequestScreenState extends State<PasswordResetRequestScreen>
                                   focusNode: _userCommentFocusNode,
                                   label: 'Комментарий (необязательно)',
                                   maxLines: 2,
+                                  maxLength: 1000,
                                 ),
                                 const SizedBox(height: 24),
                                  _buildSubmitButton(
@@ -255,7 +256,7 @@ class _PasswordResetRequestScreenState extends State<PasswordResetRequestScreen>
                                ] else ...[
                                 const SizedBox(height: 24),
                                 _buildSubmitButton(
-                                  text: 'На главный экран',
+                                  text: 'Уже есть аккаунт? Войти',
                                   onPressed: () {
                                     Navigator.pushNamedAndRemoveUntil(context, '/auth', (route) => false);
                                   },
@@ -401,6 +402,8 @@ class _PasswordResetRequestScreenState extends State<PasswordResetRequestScreen>
         controller: controller,
         focusNode: focusNode,
         keyboardType: TextInputType.phone,
+        maxLength: 32,
+        buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
         inputFormatters: [
           PhoneInputFormatter(
             _selectedCountryCode,
@@ -436,6 +439,7 @@ class _PasswordResetRequestScreenState extends State<PasswordResetRequestScreen>
     required FocusNode focusNode,
     required String label,
     int maxLines = 1,
+    int? maxLength,
   }) {
     final theme = Theme.of(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -448,6 +452,7 @@ class _PasswordResetRequestScreenState extends State<PasswordResetRequestScreen>
         controller: controller,
         focusNode: focusNode,
         maxLines: maxLines,
+        maxLength: maxLength,
         decoration: InputDecoration(
           hintText: 'Введите $label',
           filled: true,

@@ -375,14 +375,10 @@ class AuthService {
         if (userComment != null && userComment.isNotEmpty) 'user_comment': userComment,
       });
       return {
-        'id': response.data['id'],
-        'status': response.data['status']?.toString(),
-        'created_at': response.data['created_at']?.toString(),
+        'status': response.data?['status']?.toString(),
+        'created_at': response.data?['created_at']?.toString(),
       };
     } on DioException catch (e) {
-      if (e.response?.statusCode == 409) {
-        throw Exception('Номер уже зарегистрирован или заявка с этим номером уже на рассмотрении.');
-      }
       throw _handleError(e);
     }
   }
@@ -400,17 +396,10 @@ class AuthService {
         if (userComment != null && userComment.isNotEmpty) 'user_comment': userComment,
       });
       return {
-        'id': response.data['id'],
-        'status': response.data['status']?.toString(),
-        'created_at': response.data['created_at']?.toString(),
+        'status': response.data?['status']?.toString(),
+        'created_at': response.data?['created_at']?.toString(),
       };
     } on DioException catch (e) {
-      if (e.response?.statusCode == 404) {
-        throw Exception('Аккаунт с таким номером телефона не найден.');
-      }
-      if (e.response?.statusCode == 409) {
-        throw Exception('Уже есть необработанная заявка на сброс пароля для этого номера.');
-      }
       throw _handleError(e);
     }
   }
@@ -447,6 +436,10 @@ class AuthService {
 
   Exception _handleError(DioException e) {
     int? statusCode = e.response?.statusCode;
+    if (statusCode == 413) {
+      return AuthException(statusCode: 413, message: 'Файл слишком большой');
+    }
+
     String message = 'Произошла ошибка. Попробуйте позже.';
 
     if (e.error is AuthException) {
@@ -454,16 +447,21 @@ class AuthService {
       return AuthException(statusCode: authErr.statusCode, message: authErr.message);
     }
 
+    if (statusCode == 502 || statusCode == 503 || statusCode == 504) {
+      final detail = e.response?.data is Map ? e.response?.data['detail'] : null;
+      message = (detail is String && detail.isNotEmpty)
+          ? detail
+          : 'Сервис временно недоступен, попробуйте ещё раз через минуту';
+      return AuthException(statusCode: statusCode, message: message);
+    }
+
     if (e.response?.data is Map && e.response?.data['detail'] != null) {
       final detail = e.response!.data['detail'];
-      if (detail is String) {
+      if (detail is String && detail.isNotEmpty) {
         message = detail;
       } else if (detail is List) {
-        try {
-          message = detail.map((e) => e is Map ? (e['msg'] ?? e.toString()) : e.toString()).join('\n');
-        } catch (_) {
-          message = detail.join('\n');
-        }
+        // Шаг 4: если detail — массив, не показывать его
+        message = 'Проверьте введённые данные';
       } else {
         message = detail.toString();
       }
@@ -471,7 +469,7 @@ class AuthService {
       if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout ||
           e.type == DioExceptionType.sendTimeout) {
-        message = 'Сервер временно недоступен. Попробуйте позже.';
+        message = 'Сервис временно недоступен, попробуйте ещё раз через минуту';
       } else if (e.type == DioExceptionType.connectionError) {
         message = 'Не удалось подключиться к серверу. Проверьте интернет.';
       } else if (statusCode == 401) {
@@ -482,21 +480,13 @@ class AuthService {
         message = 'Сервер временно недоступен. Попробуйте позже.';
       } else if (statusCode == 409) {
         message = 'Конфликт данных. Возможно, такой пользователь уже существует.';
+      } else if (statusCode == 413) {
+        message = 'Файл слишком большой';
       } else if (statusCode == 422) {
-        final data = e.response?.data;
-        if (data is Map && data['detail'] != null) {
-          final detail = data['detail'];
-          if (detail is List) {
-            message = detail.map((d) => d is Map ? (d['msg'] ?? d.toString()) : d.toString()).join('\n');
-          } else {
-            message = detail.toString();
-          }
-        } else {
-          message = 'Неверные данные. Проверьте введённую информацию.';
-        }
+        message = 'Проверьте введённые данные';
       } else if (statusCode == 429) {
         message = e.response?.data?['detail']?.toString() ??
-            'Слишком много запросов. Подождите и попробуйте снова.';
+            'Суточный лимит загрузок исчерпан (500 МБ). Попробуйте позже';
       } else if (statusCode == 500) {
         message = 'Ошибка на сервере. Попробуйте позже.';
       }

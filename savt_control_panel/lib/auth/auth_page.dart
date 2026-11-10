@@ -481,7 +481,7 @@ class _AuthPageState extends State<AuthPage>
         if (mounted) {
           Navigator.pop(context, false);
           _showSuccessSnackBar(
-              'Заявка на регистрацию отправлена. Ожидайте одобрения администратором.');
+              'Заявка отправлена. Администратор рассмотрит её, о решении сообщим.');
           setState(() {
             _isLoginMode = true;
           });
@@ -1456,7 +1456,8 @@ class _AuthPageState extends State<AuthPage>
               controller: _fullNameController,
               focusNode: _fullNameFocusNode,
               label: 'ФИО',
-              isRequired: true),
+              isRequired: true,
+              maxLength: 255),
           const SizedBox(height: 16),
           _buildUserTypeSelector(),
           const SizedBox(height: 16),
@@ -1465,7 +1466,8 @@ class _AuthPageState extends State<AuthPage>
                 controller: _orgNameController,
                 focusNode: _orgNameFocusNode,
                 label: 'Название организации',
-                isRequired: true),
+                isRequired: true,
+                maxLength: 255),
             const SizedBox(height: 16),
           ],
           Column(
@@ -1683,6 +1685,8 @@ class _AuthPageState extends State<AuthPage>
       controller: controller,
       focusNode: focusNode,
       keyboardType: TextInputType.phone,
+      maxLength: 32,
+      buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
       inputFormatters: [
         PhoneInputFormatter(
           _selectedCountryCode,
@@ -1701,7 +1705,8 @@ class _AuthPageState extends State<AuthPage>
       {required TextEditingController controller,
       required FocusNode focusNode,
       required String label,
-      bool isRequired = false}) {
+      bool isRequired = false,
+      int? maxLength}) {
     final theme = Theme.of(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
@@ -1719,6 +1724,7 @@ class _AuthPageState extends State<AuthPage>
       TextFormField(
         controller: controller,
         focusNode: focusNode,
+        maxLength: maxLength,
         decoration: InputDecoration(hintText: 'Введите $label'),
       ),
     ]);

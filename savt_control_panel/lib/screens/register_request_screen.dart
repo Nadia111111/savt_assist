@@ -129,7 +129,7 @@ class _RegisterRequestScreenState extends State<RegisterRequestScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Заявка отправлена, ожидайте'),
+            content: Text('Заявка отправлена. Администратор рассмотрит её, о решении сообщим'),
             backgroundColor: Colors.green,
           ),
         );
@@ -256,7 +256,7 @@ class _RegisterRequestScreenState extends State<RegisterRequestScreen> {
                                const SizedBox(height: 8),
                               Text(
                                 _isSubmitted
-                                    ? 'Ваша заявка находится на рассмотрении. После одобрения вы получите push-уведомление.'
+                                    ? 'Заявка отправлена. Администратор рассмотрит её, о решении сообщим.'
                                     : 'Для пользователей без Telegram',
                                 textAlign: TextAlign.start,
                                 style: theme.textTheme.bodyMedium
@@ -276,6 +276,7 @@ class _RegisterRequestScreenState extends State<RegisterRequestScreen> {
                                   controller: _fullNameController,
                                   focusNode: _fullNameFocusNode,
                                   label: 'ФИО *',
+                                  maxLength: 255,
                                 ),
                                 const SizedBox(height: 16),
                                 _buildUserTypeSelector(),
@@ -285,6 +286,7 @@ class _RegisterRequestScreenState extends State<RegisterRequestScreen> {
                                     controller: _orgNameController,
                                     focusNode: _orgNameFocusNode,
                                     label: 'Название организации *',
+                                    maxLength: 255,
                                   ),
                                   const SizedBox(height: 16),
                                 ],
@@ -328,6 +330,7 @@ class _RegisterRequestScreenState extends State<RegisterRequestScreen> {
                                   focusNode: _userCommentFocusNode,
                                   label: 'Комментарий (необязательно, до 1000 символов)',
                                   maxLines: 3,
+                                  maxLength: 1000,
                                 ),
                                 const SizedBox(height: 24),
                                  _buildSubmitButton(
@@ -337,7 +340,7 @@ class _RegisterRequestScreenState extends State<RegisterRequestScreen> {
                                ] else ...[
                                 const SizedBox(height: 24),
                                 _buildSubmitButton(
-                                  text: 'На главный экран',
+                                  text: 'Уже есть аккаунт? Войти',
                                   onPressed: () {
                                     Navigator.pushNamedAndRemoveUntil(context, '/auth', (route) => false);
                                   },
@@ -554,6 +557,8 @@ class _RegisterRequestScreenState extends State<RegisterRequestScreen> {
         controller: controller,
         focusNode: focusNode,
         keyboardType: TextInputType.phone,
+        maxLength: 32,
+        buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
         inputFormatters: [
           PhoneInputFormatter(
             _selectedCountryCode,
@@ -589,6 +594,7 @@ class _RegisterRequestScreenState extends State<RegisterRequestScreen> {
     required FocusNode focusNode,
     required String label,
     int maxLines = 1,
+    int? maxLength,
   }) {
     final theme = Theme.of(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -601,6 +607,7 @@ class _RegisterRequestScreenState extends State<RegisterRequestScreen> {
         controller: controller,
         focusNode: focusNode,
         maxLines: maxLines,
+        maxLength: maxLength,
         decoration: InputDecoration(
           hintText: 'Введите $label',
           filled: true,

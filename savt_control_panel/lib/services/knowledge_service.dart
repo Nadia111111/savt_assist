@@ -35,7 +35,7 @@ class KnowledgeService {
     try {
       final query = <String, dynamic>{'page': page, 'size': size};
       if (categoryId != null) query['category_id'] = categoryId;
-      if (tagIds != null && tagIds.isNotEmpty) query['tag_ids'] = tagIds;
+      if (tagIds != null && tagIds.isNotEmpty) query['tag_ids'] = tagIds.take(100).toList();
       if (search != null && search.isNotEmpty) query['search'] = search;
       if (sortBy != null && sortBy.isNotEmpty) query['sort_by'] = sortBy;
       if (sortOrder != null && sortOrder.isNotEmpty) query['sort_order'] = sortOrder;
@@ -192,15 +192,29 @@ class KnowledgeService {
   }
 
   String _handleError(DioException e) {
+    if (e.response?.statusCode == 413) {
+      return 'Файл слишком большой';
+    }
+    if (e.response?.statusCode == 429) {
+      final detail = e.response?.data is Map ? e.response?.data['detail'] : null;
+      if (detail is String && detail.isNotEmpty) return detail;
+      return 'Суточный лимит загрузок исчерпан (500 МБ). Попробуйте позже';
+    }
+    if (e.response?.statusCode == 422) {
+      return 'Проверьте введённые данные';
+    }
+    if (e.response?.statusCode == 502 ||
+        e.response?.statusCode == 503 ||
+        e.response?.statusCode == 504) {
+      final detail = e.response?.data is Map ? e.response?.data['detail'] : null;
+      if (detail is String && detail.isNotEmpty) return detail;
+      return 'Сервис временно недоступен, попробуйте ещё раз через минуту';
+    }
     if (e.response?.data is Map && e.response?.data['detail'] != null) {
       final detail = e.response!.data['detail'];
-      if (detail is String) return detail;
+      if (detail is String && detail.isNotEmpty) return detail;
       if (detail is List) {
-        try {
-          return detail.map((e) => e is Map ? (e['msg'] ?? e.toString()) : e.toString()).join('\n');
-        } catch (_) {
-          return detail.join('\n');
-        }
+        return 'Проверьте введённые данные';
       }
       return detail.toString();
     }

@@ -871,20 +871,29 @@ class ChatService {
       }
       return serverDetail.isNotEmpty ? serverDetail : 'Недостаточно прав (403). Действие не разрешено для вашей учетной записи.';
     }
+    if (e.response?.statusCode == 413) {
+      return 'Файл слишком большой';
+    }
     if (e.response?.statusCode == 429) {
-      return 'Слишком много запросов. Пожалуйста, подождите немного.';
+      final detail = e.response?.data is Map ? e.response?.data['detail'] : null;
+      if (detail is String && detail.isNotEmpty) return detail;
+      return 'Суточный лимит загрузок исчерпан (500 МБ). Попробуйте позже';
+    }
+    if (e.response?.statusCode == 422) {
+      return 'Проверьте введённые данные';
+    }
+    if (e.response?.statusCode == 502 ||
+        e.response?.statusCode == 503 ||
+        e.response?.statusCode == 504) {
+      final detail = e.response?.data is Map ? e.response?.data['detail'] : null;
+      if (detail is String && detail.isNotEmpty) return detail;
+      return 'Сервис временно недоступен, попробуйте ещё раз через минуту';
     }
     if (e.response?.data is Map && e.response?.data['detail'] != null) {
       final detail = e.response!.data['detail'];
-      if (detail is String) return detail;
+      if (detail is String && detail.isNotEmpty) return detail;
       if (detail is List) {
-        try {
-          return detail
-              .map((e) => e is Map ? (e['msg'] ?? e.toString()) : e.toString())
-              .join('\n');
-        } catch (_) {
-          return detail.join('\n');
-        }
+        return 'Проверьте введённые данные';
       }
       return detail.toString();
     }

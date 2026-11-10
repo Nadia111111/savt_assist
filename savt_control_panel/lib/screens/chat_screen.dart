@@ -1107,6 +1107,10 @@ Future<void> _deleteSelectedMessages() async {
 
     final text = _messageController.text.trim();
     if (text.isEmpty && _editingMessage == null) return;
+    if (text.length > 4000) {
+      _showError('Длина сообщения не должна превышать 4000 символов');
+      return;
+    }
 
     if (_editingMessage != null) {
       final msgId = int.tryParse(_editingMessage!.id);
@@ -1630,6 +1634,13 @@ Future<void> _deleteSelectedMessages() async {
     });
     
     if (path != null) {
+      if (!kIsWeb && File(path).existsSync()) {
+        final size = File(path).lengthSync();
+        if (size > UploadService.maxVoiceSizeBytes) {
+          _showError('Файл слишком большой. Максимальный размер голосового сообщения — 25 МБ');
+          return;
+        }
+      }
       setState(() => _isLoading = true);
       try {
         final url = await uploadService.uploadVoice(path);
@@ -1820,6 +1831,25 @@ Future<void> _deleteSelectedMessages() async {
       _showError('Чат перенесен в архив. Отправка сообщений недоступна.');
       return;
     }
+
+    if (!kIsWeb) {
+      try {
+        final f = File(path);
+        if (f.existsSync()) {
+          final length = f.lengthSync();
+          final bool isVid = UploadService.isVideo(path);
+          if (isVid && length > UploadService.maxVideoSizeBytes) {
+            _showError('Файл слишком большой. Максимальный размер видео — 100 МБ');
+            return;
+          }
+          if (!isVid && length > UploadService.maxFileSizeBytes) {
+            _showError('Файл слишком большой. Максимальный размер файла — 30 МБ');
+            return;
+          }
+        }
+      } catch (_) {}
+    }
+
     final lowercase = path.toLowerCase();
     final isImage = lowercase.endsWith('.jpg') || lowercase.endsWith('.jpeg') || lowercase.endsWith('.png') || lowercase.endsWith('.webp');
 
@@ -2048,6 +2078,16 @@ Future<void> _deleteSelectedMessages() async {
   }) async {
     if (_isChatArchived) {
       _showError('Чат перенесен в архив. Отправка сообщений недоступна.');
+      return;
+    }
+
+    final bool isVid = UploadService.isVideo(fileName);
+    if (isVid && bytes.length > UploadService.maxVideoSizeBytes) {
+      _showError('Файл слишком большой. Максимальный размер видео — 100 МБ');
+      return;
+    }
+    if (!isVid && bytes.length > UploadService.maxFileSizeBytes) {
+      _showError('Файл слишком большой. Максимальный размер файла — 30 МБ');
       return;
     }
 
@@ -4321,6 +4361,8 @@ const Spacer(),
                                   focusNode: _focusNode,
                                   minLines: 1,
                                   maxLines: 5,
+                                  maxLength: 4000,
+                                  buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
                                   keyboardType: TextInputType.multiline,
                                   onChanged: (val) => setState(() {}),
                                   contentInsertionConfiguration: ContentInsertionConfiguration(

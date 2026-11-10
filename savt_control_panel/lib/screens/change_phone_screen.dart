@@ -552,6 +552,8 @@ class _ChangePhoneScreenState extends State<ChangePhoneScreen> {
                   key: ValueKey(_selectedCountryCode),
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
+                  maxLength: 32,
+                  buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
                   inputFormatters: [
                     PhoneInputFormatter(
                       _selectedCountryCode,
@@ -607,6 +609,7 @@ class _ChangePhoneScreenState extends State<ChangePhoneScreen> {
         TextFormField(
           controller: _commentController,
           maxLines: 3,
+          maxLength: 1000,
           decoration: InputDecoration(
             hintText: 'Например: Утеряна старая SIM-карта или изменился аккаунт Telegram',
             filled: true,

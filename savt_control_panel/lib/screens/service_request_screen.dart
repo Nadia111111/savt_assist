@@ -126,6 +126,10 @@ class _ServiceRequestScreenState extends State<ServiceRequestScreen> {
       _showError('Описание должно быть не менее 10 символов');
       return;
     }
+    if (description.length > 5000) {
+      _showError('Описание не должно превышать 5000 символов');
+      return;
+    }
 
     final isOnline = OfflineService().isOnline;
     if (!isOnline) {
@@ -571,6 +575,7 @@ class _ServiceRequestScreenState extends State<ServiceRequestScreen> {
                   TextField(
                     controller: _descriptionController,
                     maxLines: 6,
+                    maxLength: 5000,
                     decoration: InputDecoration(
                       hintText:
                           'Опишите подробно проблему, с которой вы столкнулись...',

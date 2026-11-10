@@ -1,10 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../theme/app_spacing.dart';
 import '../widgets/animated_background.dart';
 import '../main.dart';
-import '../screens/password_reset_request_screen.dart';
 import '../widgets/bottom_nav_bar.dart';
 import '../utils/phone_helper.dart';
 
@@ -36,8 +36,31 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   bool _isResetting = false;
   bool _isLoading = false;
 
+  Timer? _resendTimer;
+  int _resendSeconds = 60;
+  bool _canResend = false;
+
   int _verificationStep =
       1; // 1 - ввод телефона, 2 - ввод кода, 3 - новый пароль
+
+  void _startResendTimer() {
+    _canResend = false;
+    _resendTimer?.cancel();
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        if (_resendSeconds > 0) {
+          _resendSeconds--;
+        } else {
+          _canResend = true;
+          timer.cancel();
+        }
+      });
+    });
+  }
 
   String? _validatePhone(String? value) {
     return PhoneHelper.validate(value, _selectedCountryCode);
@@ -63,15 +86,18 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
     setState(() => _isLoading = true);
     try {
-      await authService.passwordResetStart(fullPhone);
+      final resendAfter = await authService.passwordResetStart(fullPhone);
       if (!mounted) return;
       setState(() {
         _isLoading = false;
         _verificationStep = 2;
+        _resendSeconds = resendAfter;
+        _canResend = false;
       });
+      _startResendTimer();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('Код подтверждения отправлен'),
+            content: Text('Если номер зарегистрирован и подключён Telegram-бот, мы отправили код'),
             backgroundColor: Colors.green),
       );
     } catch (e) {
@@ -174,6 +200,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   void dispose() {
+    _resendTimer?.cancel();
     _phoneController.dispose();
     _smsCodeController.dispose();
     _newPasswordController.dispose();
@@ -294,7 +321,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                       color: theme.colorScheme.primary,
                                       size: 18),
                                   label: Text(
-                                      'Оставить заявку на сброс пароля',
+                                      'Нет доступа к Telegram? Подать заявку администратору',
                                       style: TextStyle(
                                           fontSize: 13,
                                           color: theme.colorScheme.primary,
@@ -311,12 +338,34 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                 _buildSmsCodeField(),
                                 const SizedBox(height: 16),
                                 Text(
-                                    'Код подтверждения отправлен в Telegram на номер $_selectedCountryCode ${_phoneController.text}.\n\nЕсли код не приходит — у вашего аккаунта нет связки с Telegram-ботом, и самостоятельно это настроить не получится.',
+                                    'Если номер зарегистрирован и подключён Telegram-бот, мы отправили код.',
                                     textAlign: TextAlign.start,
                                     style: theme.textTheme.bodySmall
                                         ?.copyWith(
                                             color: theme
                                                 .colorScheme.onSurfaceVariant)),
+                                const SizedBox(height: 12),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: TextButton(
+                                    onPressed: (_canResend && !_isLoading) ? _sendSmsCode : null,
+                                    style: TextButton.styleFrom(
+                                      padding: EdgeInsets.zero,
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    child: Text(
+                                      _canResend
+                                          ? 'Отправить код повторно'
+                                          : 'Повторная отправка через $_resendSeconds сек',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: _canResend ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ),
                                 const SizedBox(height: 8),
                                 TextButton.icon(
                                   onPressed: () => Navigator.pushNamed(
@@ -325,7 +374,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                       color: theme.colorScheme.primary,
                                       size: 18),
                                   label: Text(
-                                      'Оставить заявку на сброс пароля',
+                                      'Нет доступа к Telegram? Подать заявку администратору',
                                       style: TextStyle(
                                           fontSize: 13,
                                           color: theme.colorScheme.primary,
@@ -552,6 +601,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         controller: _phoneController,
         focusNode: _phoneFocusNode,
         keyboardType: TextInputType.phone,
+        maxLength: 32,
+        buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
         inputFormatters: [
           PhoneInputFormatter(
             _selectedCountryCode,

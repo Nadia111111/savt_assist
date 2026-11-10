@@ -9,12 +9,42 @@ import 'api_client.dart';
 class UploadService {
   final ApiClient _apiClient;
 
+  static const int maxFileSizeBytes = 30 * 1024 * 1024; // 30 MB
+  static const int maxVideoSizeBytes = 100 * 1024 * 1024; // 100 MB
+  static const int maxVoiceSizeBytes = 25 * 1024 * 1024; // 25 MB
+
+  static bool isVideo(String pathOrName) {
+    final lower = pathOrName.toLowerCase();
+    return lower.endsWith('.mp4') ||
+        lower.endsWith('.mov') ||
+        lower.endsWith('.avi') ||
+        lower.endsWith('.mkv') ||
+        lower.endsWith('.webm') ||
+        lower.endsWith('.3gp') ||
+        lower.endsWith('.flv') ||
+        lower.endsWith('.m4v');
+  }
+
   UploadService(this._apiClient);
 
   /// Загрузить файл (изображение, документ, видео).
   /// Сервер возвращает подписанную ссылку, которую необходимо передавать без изменений.
   Future<String> uploadAttachment(String filePath, {bool compress = true}) async {
     try {
+      if (!kIsWeb) {
+        final originFile = File(filePath);
+        if (await originFile.exists()) {
+          final originalLength = await originFile.length();
+          final bool isVid = isVideo(filePath);
+          if (isVid && originalLength > maxVideoSizeBytes) {
+            throw 'Файл слишком большой';
+          }
+          if (!isVid && originalLength > maxFileSizeBytes) {
+            throw 'Файл слишком большой';
+          }
+        }
+      }
+
       String targetPath = filePath;
       final lowercasePath = filePath.toLowerCase();
       if (compress && (lowercasePath.endsWith('.jpg') ||
@@ -35,6 +65,20 @@ class UploadService {
           }
         } catch (e) {
           debugPrint('Ошибка сжатия изображения: $e');
+        }
+      }
+
+      if (!kIsWeb) {
+        final targetFile = File(targetPath);
+        if (await targetFile.exists()) {
+          final targetLength = await targetFile.length();
+          final bool isVid = isVideo(targetPath);
+          if (isVid && targetLength > maxVideoSizeBytes) {
+            throw 'Файл слишком большой';
+          }
+          if (!isVid && targetLength > maxFileSizeBytes) {
+            throw 'Файл слишком большой';
+          }
         }
       }
 
@@ -62,6 +106,14 @@ class UploadService {
   /// Загрузить файл из байтов (для веб-версии, буфера обмена и т.д.)
   Future<String> uploadAttachmentBytes(Uint8List bytes, String fileName) async {
     try {
+      final bool isVid = isVideo(fileName);
+      if (isVid && bytes.length > maxVideoSizeBytes) {
+        throw 'Файл слишком большой';
+      }
+      if (!isVid && bytes.length > maxFileSizeBytes) {
+        throw 'Файл слишком большой';
+      }
+
       final file = MultipartFile.fromBytes(bytes, filename: fileName);
       final formData = FormData.fromMap({
         'file': file,
@@ -85,6 +137,16 @@ class UploadService {
   /// Сервер возвращает подписанную ссылку, которую необходимо передавать без изменений.
   Future<String> uploadVoice(String filePath) async {
     try {
+      if (!kIsWeb) {
+        final f = File(filePath);
+        if (await f.exists()) {
+          final len = await f.length();
+          if (len > maxVoiceSizeBytes) {
+            throw 'Файл слишком большой';
+          }
+        }
+      }
+
       final fileName = filePath.split('/').last;
       final file = await MultipartFile.fromFile(filePath, filename: fileName);
       final formData = FormData.fromMap({
@@ -286,20 +348,38 @@ class UploadService {
   }
 
   String _handleError(DioException e) {
+    if (e.response?.statusCode == 413) {
+      return 'Файл слишком большой';
+    }
     if (e.response?.statusCode == 429) {
-      return 'Слишком много запросов. Пожалуйста, подождите немного.';
+      if (e.response?.data is Map && e.response?.data['detail'] != null) {
+        final detail = e.response!.data['detail'];
+        if (detail is String && detail.isNotEmpty) return detail;
+      }
+      return 'Суточный лимит загрузок исчерпан (500 МБ). Попробуйте позже';
+    }
+    if (e.response?.statusCode == 422) {
+      return 'Проверьте введённые данные';
+    }
+    if (e.response?.statusCode == 502 ||
+        e.response?.statusCode == 503 ||
+        e.response?.statusCode == 504) {
+      final detail = e.response?.data is Map ? e.response?.data['detail'] : null;
+      if (detail is String && detail.isNotEmpty) return detail;
+      return 'Сервис временно недоступен, попробуйте ещё раз через минуту';
     }
     if (e.response?.data is Map && e.response?.data['detail'] != null) {
       final detail = e.response!.data['detail'];
       if (detail is String) return detail;
       if (detail is List) {
-        try {
-          return detail.map((e) => e is Map ? (e['msg'] ?? e.toString()) : e.toString()).join('\n');
-        } catch (_) {
-          return detail.join('\n');
-        }
+        return 'Проверьте введённые данные';
       }
       return detail.toString();
+    }
+    if (e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.receiveTimeout ||
+        e.type == DioExceptionType.sendTimeout) {
+      return 'Сервис временно недоступен, попробуйте ещё раз через минуту';
     }
     return 'Ошибка загрузки файла';
   }
