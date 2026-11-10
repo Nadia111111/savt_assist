@@ -8,6 +8,7 @@ import '../theme/app_colors.dart';
 import '../widgets/gradient_scaffold.dart';
 import '../widgets/responsive_layout.dart';
 import '../widgets/offline_aware_button.dart';
+import '../services/upload_service.dart';
 import '../main.dart'; // authService, uploadService, reclamationsService
 
 class CreateReclamationScreen extends StatefulWidget {

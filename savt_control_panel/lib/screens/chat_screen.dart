@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:ui';
 import '../services/file_save_helper.dart';
 import '../services/api_client.dart';
+import '../services/upload_service.dart';
 import 'package:open_file/open_file.dart';
 import '../utils/download_helper.dart';
 import 'package:shared_preferences/shared_preferences.dart';
